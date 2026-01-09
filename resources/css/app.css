@@ -1,0 +1,372 @@
+
+/* Importando a Josefin Sans com vários pesos (do fininho ao negrito) */
+@import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&display=swap');
+
+[x-cloak] {
+  display: none !important;
+}
+
+:root {
+  --accent: #8DC63F;
+  --accent-hover: #63BE15;
+  --accent-soft: rgba(141, 198, 63, 0.15);
+  --accent-contrast: #ffffff;
+  --nav-text: #ffffff;
+  --nav-hover: rgba(255, 255, 255, 0.2);
+  --nav-active-bg: #ffffff;
+  --nav-active-text: var(--accent);
+  --nav-border: rgba(255, 255, 255, 0.2);
+}
+
+.theme-juridico {
+  --accent: #DC2626;
+  --accent-hover: #B91C1C;
+  --accent-soft: rgba(220, 38, 38, 0.15);
+}
+
+.theme-mkt {
+  --accent: #3B82F6;
+  --accent-hover: #2563EB;
+  --accent-soft: rgba(59, 130, 246, 0.15);
+}
+
+.theme-rh {
+  --accent: #FBBF24;
+  --accent-hover: #F59E0B;
+  --accent-soft: rgba(251, 191, 36, 0.2);
+  --accent-contrast: #111827;
+  --nav-text: #111827;
+  --nav-hover: rgba(17, 24, 39, 0.12);
+  --nav-border: rgba(17, 24, 39, 0.18);
+}
+
+.select-theme-juridico {
+  --accent: #DC2626;
+  --accent-hover: #B91C1C;
+  --accent-soft: rgba(220, 38, 38, 0.15);
+}
+
+.select-theme-mkt {
+  --accent: #3B82F6;
+  --accent-hover: #2563EB;
+  --accent-soft: rgba(59, 130, 246, 0.15);
+}
+
+.select-theme-rh {
+  --accent: #FBBF24;
+  --accent-hover: #F59E0B;
+  --accent-soft: rgba(251, 191, 36, 0.2);
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .btn-accent {
+    background-color: var(--accent);
+    color: var(--accent-contrast);
+  }
+
+  .btn-accent:hover {
+    background-color: var(--accent-hover);
+  }
+
+  .nav-link {
+    @apply inline-flex items-center px-3 py-2 rounded-full text-sm font-medium leading-5 transition duration-150 ease-in-out;
+    color: var(--nav-text);
+    background-color: transparent;
+  }
+
+  .nav-link:hover {
+    color: var(--nav-text);
+    background-color: var(--nav-hover);
+  }
+
+  .nav-link-active {
+    color: var(--nav-active-text);
+    background-color: var(--nav-active-bg);
+  }
+
+  .nav-link-mobile {
+    @apply block w-full px-4 py-2 rounded-md text-start text-base font-medium transition duration-150 ease-in-out;
+    color: #4b5563;
+    background-color: transparent;
+  }
+
+  .nav-link-mobile:hover {
+    color: #111827;
+    background-color: var(--accent-soft);
+  }
+
+  .nav-link-mobile-active {
+    color: #ffffff;
+    background-color: var(--accent);
+  }
+
+  .app-nav {
+    padding: 1.5rem 0;
+  }
+
+  .app-nav-shell {
+    background-color: var(--accent);
+    border-radius: 9999px;
+    border: 1px solid var(--nav-border);
+    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.25);
+  }
+
+  .app-nav-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.4rem 0.9rem;
+  }
+
+  .app-nav-logo {
+    width: 44px;
+    height: 44px;
+    border-radius: 9999px;
+    background-color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
+  }
+
+  .app-nav-links {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .app-nav-user {
+    background-color: transparent;
+    border-radius: 9999px;
+    padding: 0;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--nav-text);
+  }
+
+  .app-nav-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 9999px;
+    border: 2px solid #ffffff;
+    object-fit: cover;
+    background-color: #ffffff;
+    flex-shrink: 0;
+  }
+
+  .app-nav-avatar-fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #ffffff;
+    background-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .app-nav-user-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background-color: #ffffff;
+    color: #111827;
+    border-radius: 9999px;
+    padding: 0.35rem 0.9rem;
+    box-shadow: inset 0 0 0 1px rgba(17, 24, 39, 0.08);
+    transition: background-color 150ms ease-in-out;
+  }
+
+  .app-nav-user:hover .app-nav-user-pill {
+    background-color: #f9fafb;
+  }
+
+  .app-nav-user-name {
+    max-width: 160px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .app-nav-user-chevron {
+    opacity: 0.7;
+  }
+
+  .file-accent-shell {
+    border: 1px dashed var(--accent);
+    background-color: var(--accent-soft);
+    border-radius: 0.75rem;
+    padding: 0.75rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .file-accent-button {
+    background-color: var(--accent);
+    color: var(--accent-contrast);
+    border-radius: 9999px;
+    padding: 0.4rem 0.9rem;
+    font-weight: 700;
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: background-color 150ms ease-in-out;
+  }
+
+  .file-accent-button:hover {
+    background-color: var(--accent-hover);
+  }
+
+  .file-accent-name {
+    font-size: 0.875rem;
+    color: #111827;
+  }
+
+  .dark .file-accent-name {
+    color: #e5e7eb;
+  }
+
+  .app-nav-hamburger {
+    color: var(--nav-text);
+    background-color: rgba(255, 255, 255, 0.16);
+    border-radius: 9999px;
+    border: 1px solid var(--nav-border);
+    padding: 0.4rem;
+    transition: background-color 150ms ease-in-out;
+  }
+
+  .app-nav-hamburger:hover {
+    background-color: rgba(255, 255, 255, 0.26);
+  }
+
+  .app-nav-mobile {
+    margin-top: 0.75rem;
+    background-color: #ffffff;
+    border-radius: 1rem;
+    border: 1px solid rgba(17, 24, 39, 0.08);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.18);
+  }
+
+  .chat-theme[data-theme="juridico"] {
+    --accent: #DC2626;
+    --accent-hover: #B91C1C;
+    --accent-soft: rgba(220, 38, 38, 0.15);
+  }
+
+  .chat-theme[data-theme="mkt"] {
+    --accent: #3B82F6;
+    --accent-hover: #2563EB;
+    --accent-soft: rgba(59, 130, 246, 0.15);
+  }
+
+  .chat-theme[data-theme="rh"] {
+    --accent: #FBBF24;
+    --accent-hover: #F59E0B;
+    --accent-soft: rgba(251, 191, 36, 0.2);
+  }
+
+  .chat-bubble {
+    max-width: 75%;
+    border-radius: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .chat-bubble-user {
+    background-color: var(--accent);
+    color: #fff;
+  }
+
+  .chat-bubble-assistant {
+    background-color: var(--accent-soft);
+    color: #111827;
+  }
+
+  .chat-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+    outline: none;
+  }
+
+  .chat-input:disabled {
+    background-color: #f3f4f6;
+    color: #9ca3af;
+    cursor: not-allowed;
+  }
+
+  .dark .chat-input:disabled {
+    background-color: #111827;
+    color: #6b7280;
+  }
+
+  .chat-sector-btn {
+    border: 1px solid var(--btn-color, #d1d5db);
+    color: var(--btn-color, #6b7280);
+    background-color: #ffffff;
+    border-radius: 9999px;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    transition: background-color 150ms, color 150ms, border-color 150ms;
+  }
+
+  .chat-sector-btn:hover {
+    background-color: var(--btn-soft, rgba(0, 0, 0, 0.04));
+  }
+
+  .chat-sector-btn-active {
+    background-color: var(--btn-color);
+    border-color: var(--btn-color);
+    color: #ffffff;
+  }
+
+  .chat-sector-btn-active:hover {
+    background-color: var(--btn-hover, var(--btn-color));
+    border-color: var(--btn-hover, var(--btn-color));
+  }
+
+  .chat-sector-btn[data-sector="juridico"] {
+    --btn-color: #DC2626;
+    --btn-hover: #B91C1C;
+    --btn-soft: rgba(220, 38, 38, 0.12);
+  }
+
+  .chat-sector-btn[data-sector="mkt"] {
+    --btn-color: #3B82F6;
+    --btn-hover: #2563EB;
+    --btn-soft: rgba(59, 130, 246, 0.12);
+  }
+
+  .chat-sector-btn[data-sector="rh"] {
+    --btn-color: #F59E0B;
+    --btn-hover: #D97706;
+    --btn-soft: rgba(251, 191, 36, 0.18);
+  }
+
+  .dropdown-option:hover {
+    background-color: var(--accent-soft);
+  }
+
+  .dropdown-option.is-selected {
+    background-color: var(--accent);
+    color: #fff;
+  }
+
+  .dropdown-option.is-selected:hover {
+    background-color: var(--accent);
+  }
+}
