@@ -5,26 +5,42 @@
         </h2>
     </x-slot>
 
-    @php
-        $sectorOptions = collect($sectors ?? [])->mapWithKeys(function ($sectorItem) {
-            return [$sectorItem => strtoupper($sectorItem)];
-        })->all();
-        $statusOptions = collect($statuses ?? [])->mapWithKeys(function ($statusItem) {
-            $label = ucwords(str_replace('_', ' ', $statusItem));
-            return [$statusItem => $label];
-        })->all();
-        $scoreOptions = collect(range(1, 5))->mapWithKeys(function ($value) {
-            return [(string) $value => (string) $value];
-        })->all();
-    @endphp
-
-    <div class="py-12" x-data="{ openId: null }">
+    <div class="py-12" x-data="{ openId: null, rejectId: null }">
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
             @if (session('status'))
                 <div class="mb-4 rounded-md bg-green-50 text-green-800 px-4 py-2 text-sm">
                     {{ session('status') }}
                 </div>
             @endif
+
+            <div class="admin-filter-row mb-6">
+                <div>
+                    <div class="admin-filter-title">Filtros dos chamados</div>
+                    <div class="admin-filter-sub">Busque por periodo e ID</div>
+                </div>
+                <form method="GET" action="{{ route('portal.sector', ['sector' => $sector]) }}" class="admin-filter-form">
+                    <label class="admin-filter-field">
+                        <span>De</span>
+                        <input type="date" name="from" value="{{ $filterFrom ?? '' }}" class="admin-filter-input">
+                    </label>
+                    <label class="admin-filter-field">
+                        <span>Ate</span>
+                        <input type="date" name="to" value="{{ $filterTo ?? '' }}" class="admin-filter-input">
+                    </label>
+                    <label class="admin-filter-field">
+                        <span>ID</span>
+                        <input type="text" name="request_id" value="{{ $filterRequestId ?? '' }}" class="admin-filter-input" placeholder="#123">
+                    </label>
+                    <label class="admin-filter-field">
+                        <span>Setor</span>
+                        <select class="admin-filter-input" disabled>
+                            <option value="{{ $sector }}">{{ strtoupper($sector) }}</option>
+                        </select>
+                    </label>
+                    <button type="submit" class="admin-filter-button">Aplicar</button>
+                    <a href="{{ route('portal.sector', ['sector' => $sector]) }}" class="admin-filter-button">Limpar</a>
+                </form>
+            </div>
 
             @if ($requests->isEmpty())
                 <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
@@ -33,36 +49,99 @@
                     </div>
                 </div>
             @else
-                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                <div class="request-grid grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
                     @foreach ($requests as $requestItem)
-                        <div class="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg border border-gray-200 dark:border-gray-700">
-                            <div class="p-4 space-y-3">
-                                <div class="flex items-center justify-between">
-                                    <div class="text-sm text-gray-500 dark:text-gray-400">
-                                        #{{ $requestItem->id }}
-                                    </div>
-                                    <div class="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                                        GUT {{ $requestItem->score }}
-                                    </div>
+                        @php
+                            $status = $requestItem->status ?? '';
+                            $statusLabel = $status !== '' ? str_replace('_', ' ', $status) : 'sem status';
+                            $sectorValue = $requestItem->sector ?? $sector ?? '';
+                            $palette = [
+                                'juridico' => ['accent' => '#ef4444', 'deep' => '#b91c1c'],
+                                'mkt' => ['accent' => '#3b82f6', 'deep' => '#1d4ed8'],
+                                'rh' => ['accent' => '#f59e0b', 'deep' => '#b45309'],
+                                'default' => ['accent' => '#6b7280', 'deep' => '#374151'],
+                            ];
+                            $isRejected = $status === 'recusado';
+                            $isAccepted = $status === 'em_andamento';
+                            $colors = $palette[$sectorValue] ?? $palette['default'];
+                            $cardClass = 'request-card';
+                            if ($isRejected) {
+                                $cardClass .= ' request-card--rejected';
+                            } elseif ($isAccepted) {
+                                $cardClass .= ' request-card--accepted';
+                            }
+                            $cardStyle = $isRejected
+                                ? 'background: #e5e7eb;--sector-accent: #111827;--sector-accent-deep: #111827;'
+                                : 'background: '.$colors['accent'].';--sector-accent: '.$colors['accent'].';--sector-accent-deep: '.$colors['deep'].';';
+                            $canAct = $status === 'novo' || $status === '';
+                        @endphp
+                        <div class="{{ $cardClass }}" style="{{ $cardStyle }}">
+                            <div class="request-card__hero">
+                                @if ($canAct)
+                                    <button type="button"
+                                        class="request-card__reject"
+                                        title="Recusar"
+                                        @click="rejectId = {{ $requestItem->id }}">
+                                        X
+                                    </button>
+                                @endif
+                                <div class="request-card__gut">
+                                    <span class="request-card__gut-label">GUT</span>
+                                    <span class="request-card__gut-score">{{ $requestItem->score }}</span>
                                 </div>
-
-                                <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                    {{ str_replace('_', ' ', $requestItem->status) }}
+                            </div>
+                            <div class="request-card__body">
+                                <div class="request-card__meta">
+                                    #{{ $requestItem->id }} - {{ $requestItem->created_at?->format('d/m/Y H:i') }}
                                 </div>
-
-                                <div class="text-sm text-gray-900 dark:text-gray-100">
-                                    {{ \Illuminate\Support\Str::limit($requestItem->message, 160) }}
+                                <div class="mt-1 flex flex-wrap items-center gap-2">
+                                    @if ($status !== 'em_andamento')
+                                        <span @class([
+                                            'inline-flex items-center rounded-full border px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide',
+                                            'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700' => $status === 'novo' || $status === '',
+                                            'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-900' => $status === 'concluido',
+                                            'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-900' => $status === 'recusado',
+                                        ])>
+                                            {{ $statusLabel }}
+                                        </span>
+                                    @endif
+                                    @if ($isAccepted)
+                                        <span class="request-card__accepted">
+                                            <svg viewBox="0 0 20 20" aria-hidden="true">
+                                                <path d="M7.8 13.6 4.9 10.7a1 1 0 1 1 1.4-1.4l1.5 1.5 5-5a1 1 0 1 1 1.4 1.4l-6.4 6.4a1 1 0 0 1-1.4 0z"></path>
+                                            </svg>
+                                            Aceita
+                                        </span>
+                                    @endif
                                 </div>
-
-                                <div class="text-xs text-gray-500 dark:text-gray-400">
-                                    {{ $requestItem->created_at?->format('d/m/Y H:i') }}
+                                <div class="request-card__message request-card__summary whitespace-pre-line">
+                                    {{ \Illuminate\Support\Str::limit($requestItem->summary ?: $requestItem->message, 320) }}
                                 </div>
-
+                                <div class="request-card__sub">
+                                    Solicitante: {{ $requestItem->user?->name ?? 'Usuario removido' }}
+                                </div>
+                            </div>
+                            <div class="request-card__actions">
                                 <button type="button"
-                                    class="w-full rounded-md btn-accent py-2 text-sm"
+                                    class="request-card__details"
                                     @click="openId = {{ $requestItem->id }}">
-                                    Ver detalhes
+                                    Detalhes
                                 </button>
+                                @if ($canAct)
+                                    <form method="POST" action="{{ route('gut-requests.update', $requestItem) }}">
+                                        @csrf
+                                        @method('PATCH')
+                                        <input type="hidden" name="status" value="em_andamento">
+                                        <input type="hidden" name="rejection_reason" value="">
+                                        <button type="submit"
+                                            class="request-card__accept"
+                                            aria-label="Aceitar">
+                                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                                <polygon points="8,5 19,12 8,19"></polygon>
+                                            </svg>
+                                        </button>
+                                    </form>
+                                @endif
                             </div>
                         </div>
 
@@ -70,68 +149,152 @@
                              x-cloak
                              class="fixed inset-0 z-50 flex items-center justify-center">
                             <div class="absolute inset-0 bg-black/50" @click="openId = null"></div>
-                            <div class="relative bg-white dark:bg-gray-900 w-full max-w-2xl rounded-lg shadow-lg p-6">
+                            <div class="relative w-[calc(100%-2rem)] sm:w-full max-w-3xl max-h-[85vh] overflow-y-auto">
+                                <div class="request-modal" style="--modal-accent: {{ $colors['accent'] ?? '#6b7280' }};">
+                                    <div class="request-modal__header">
+                                        <div>
+                                            <div class="request-modal__eyebrow">Detalhes do chamado</div>
+                                            <h3 class="request-modal__title">Solicitacao #{{ $requestItem->id }}</h3>
+                                            <div class="request-modal__meta">
+                                                <span class="request-modal__chip">{{ strtoupper($sectorValue !== '' ? $sectorValue : 'setor') }}</span>
+                                                <span class="request-modal__chip">{{ $requestItem->created_at?->format('d/m/Y H:i') }}</span>
+                                                <span @class([
+                                                    'request-modal__status',
+                                                    'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700' => $status === 'novo' || $status === '',
+                                                    'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-900' => $status === 'em_andamento',
+                                                    'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-900' => $status === 'concluido',
+                                                    'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-900' => $status === 'recusado',
+                                                ])>
+                                                    {{ $statusLabel }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <button type="button" class="request-modal__close" @click="openId = null">
+                                            Fechar
+                                        </button>
+                                    </div>
+
+                                    @php
+                                        $requestUser = $requestItem->user;
+                                        $photoPath = $requestUser?->profile_photo_path;
+                                        $photoUrl = $photoPath ? asset('storage/'.$photoPath) : null;
+                                        $initials = $requestUser
+                                            ? collect(explode(' ', trim($requestUser->name)))
+                                                ->filter()
+                                                ->map(fn ($part) => strtoupper(substr($part, 0, 1)))
+                                                ->take(2)
+                                                ->implode('')
+                                            : '';
+                                    @endphp
+                                    <div class="request-modal__body">
+                                        <div class="request-modal__grid">
+                                            <div class="request-modal__card">
+                                                <div class="request-modal__label">Solicitante</div>
+                                                <div class="mt-3 flex items-center gap-3">
+                                                    @if ($photoUrl)
+                                                        <img src="{{ $photoUrl }}" alt="{{ $requestUser?->name ?? 'Usuario' }}" class="h-10 w-10 rounded-full object-cover border border-gray-200 dark:border-gray-700">
+                                                    @else
+                                                        <div class="h-10 w-10 rounded-full bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200 flex items-center justify-center text-xs font-bold">
+                                                            {{ $initials }}
+                                                        </div>
+                                                    @endif
+                                                    <div>
+                                                        <div class="request-modal__value">{{ $requestUser?->name ?? 'Usuario' }}</div>
+                                                        @if ($requestUser?->email)
+                                                            <div class="text-xs text-gray-500 dark:text-gray-400">{{ $requestUser->email }}</div>
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="request-modal__card">
+                                                <div class="request-modal__label">GUT</div>
+                                                <div class="request-modal__value">
+                                                    G {{ $requestItem->gravity }}, U {{ $requestItem->urgency }}, T {{ $requestItem->trend }} ({{ $requestItem->score }})
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="request-modal__section">
+                                            <div class="request-modal__label">Mensagem</div>
+                                            <div class="request-modal__text whitespace-pre-line">
+                                                {{ $requestItem->message }}
+                                            </div>
+                                        </div>
+
+                                        <div class="request-modal__section">
+                                            <div class="request-modal__label">Resposta do chat</div>
+                                            <div class="request-modal__text whitespace-pre-line">
+                                                {{ $requestItem->response_text ?? 'Sem resposta registrada.' }}
+                                            </div>
+                                        </div>
+
+                                        @php
+                                            $attachments = $requestItem->attachments ?? collect();
+                                        @endphp
+                                        @if ($attachments->isNotEmpty())
+                                            <div class="request-modal__section">
+                                                <div class="request-modal__label">Anexos</div>
+                                                <div class="request-modal__attachments">
+                                                    @foreach ($attachments as $attachment)
+                                                        @php
+                                                            $sizeKb = (int) ceil((int) ($attachment->size ?? 0) / 1024);
+                                                            $sizeLabel = $sizeKb >= 1024
+                                                                ? number_format($sizeKb / 1024, 1, '.', '').' MB'
+                                                                : $sizeKb.' KB';
+                                                        @endphp
+                                                        <a href="{{ route('attachments.download', $attachment) }}" class="request-modal__attachment">
+                                                            <span class="request-modal__attachment-name">{{ $attachment->original_name }}</span>
+                                                            <span class="request-modal__attachment-meta">{{ $sizeLabel }}</span>
+                                                        </a>
+                                                    @endforeach
+                                                </div>
+                                            </div>
+                                        @endif
+
+                                        @if (($requestItem->rejection_reason ?? '') !== '')
+                                            <div class="request-modal__section">
+                                                <div class="request-modal__label request-modal__label--danger">Justificativa da recusa</div>
+                                                <div class="request-modal__text whitespace-pre-line">
+                                                    {{ $requestItem->rejection_reason }}
+                                                </div>
+                                            </div>
+                                        @endif
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div x-show="rejectId === {{ $requestItem->id }}"
+                             x-cloak
+                             class="fixed inset-0 z-50 flex items-center justify-center">
+                            <div class="absolute inset-0 bg-black/50" @click="rejectId = null"></div>
+                            <div class="relative bg-white dark:bg-gray-900 w-[calc(100%-2rem)] sm:w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-lg shadow-lg p-6">
                                 <div class="flex items-start justify-between">
                                     <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                        Solicitacao #{{ $requestItem->id }}
+                                        Recusar solicitacao #{{ $requestItem->id }}
                                     </h3>
-                                    <button type="button" class="text-gray-500 hover:text-gray-900" @click="openId = null">
+                                    <button type="button" class="text-gray-500 hover:text-gray-900" @click="rejectId = null">
                                         Fechar
                                     </button>
                                 </div>
-
-                                <div class="mt-4 space-y-3 text-sm text-gray-700 dark:text-gray-200">
-                                    <div>
-                                        <span class="font-semibold">Solicitante:</span>
-                                        {{ $requestItem->user?->name }} ({{ $requestItem->user?->email }})
-                                    </div>
-                                    <div>
-                                        <span class="font-semibold">Mensagem:</span>
-                                        <div class="mt-1 whitespace-pre-line text-gray-900 dark:text-gray-100">
-                                            {{ $requestItem->message }}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <form method="POST" action="{{ route('gut-requests.update', $requestItem) }}" class="mt-6 space-y-4">
+                                <form method="POST" action="{{ route('gut-requests.update', $requestItem) }}" class="mt-4 space-y-4">
                                     @csrf
                                     @method('PATCH')
-
-                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <input type="hidden" name="status" value="recusado">
                                     <div>
-                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Setor</label>
-                                        <x-select-dropdown name="sector" class="mt-1" :options="$sectorOptions" :value="$requestItem->sector" />
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            Justificativa da recusa
+                                        </label>
+                                        <textarea name="rejection_reason"
+                                            rows="4"
+                                            required
+                                            class="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                                            placeholder="Explique o motivo da recusa"></textarea>
                                     </div>
-
-                                    <div>
-                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
-                                        <x-select-dropdown name="status" class="mt-1" :options="$statusOptions" :value="$requestItem->status" />
-                                    </div>
-                                </div>
-
-                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                    <div>
-                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Gravidade</label>
-                                        <x-select-dropdown name="gravity" class="mt-1" :options="$scoreOptions" :value="$requestItem->gravity" />
-                                    </div>
-                                    <div>
-                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Urgencia</label>
-                                        <x-select-dropdown name="urgency" class="mt-1" :options="$scoreOptions" :value="$requestItem->urgency" />
-                                    </div>
-                                    <div>
-                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Tendencia</label>
-                                        <x-select-dropdown name="trend" class="mt-1" :options="$scoreOptions" :value="$requestItem->trend" />
-                                    </div>
-                                </div>
-
-                                    <div class="text-sm text-gray-500 dark:text-gray-400">
-                                        GUT atual: {{ $requestItem->score }}
-                                    </div>
-
                                     <div class="flex justify-end gap-2">
-                                        <button type="button" class="rounded-md px-4 py-2 border" @click="openId = null">Cancelar</button>
-                                        <button type="submit" class="rounded-md btn-accent px-4 py-2">
-                                            Salvar
+                                        <button type="button" class="rounded-md px-4 py-2 border" @click="rejectId = null">Cancelar</button>
+                                        <button type="submit" class="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
+                                            Recusar
                                         </button>
                                     </div>
                                 </form>

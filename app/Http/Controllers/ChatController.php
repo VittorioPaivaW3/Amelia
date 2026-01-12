@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\GutRequest;
+use App\Models\GutRequestAttachment;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,6 +21,9 @@ class ChatController extends Controller
         $data = $request->validate([
             'message' => ['required', 'string', 'max:4000'],
             'sector' => ['nullable', 'string', 'in:'.implode(',', self::SECTORS)],
+            'message_id' => ['nullable', 'string', 'max:36'],
+            'attachments' => ['nullable', 'array', 'max:5'],
+            'attachments.*' => ['file', 'max:10240', 'mimes:jpg,jpeg,png,pdf,doc,docx,xls,xlsx,ppt,pptx,txt'],
         ]);
 
         $apiKey = config('services.openai.key');
@@ -67,7 +71,17 @@ class ChatController extends Controller
         $currentHash = (string) $request->session()->get('chat_prompt_hash', '');
         if ($currentHash !== $promptHash) {
             $request->session()->forget('chat_history');
+            $request->session()->forget('chat_conversation_id');
             $request->session()->put('chat_prompt_hash', $promptHash);
+        }
+        $conversationId = (string) $request->session()->get('chat_conversation_id', '');
+        if ($conversationId === '') {
+            $conversationId = (string) Str::uuid();
+            $request->session()->put('chat_conversation_id', $conversationId);
+        }
+        $messageId = trim((string) ($data['message_id'] ?? ''));
+        if ($messageId === '') {
+            $messageId = (string) Str::uuid();
         }
 
         $history = $request->session()->get('chat_history', []);
@@ -119,7 +133,7 @@ class ChatController extends Controller
             ],
         ];
 
-        $model = config('services.openai.model', 'gpt-5-nano');
+        $model = trim((string) config('services.openai.model', 'gpt-5-nano'));
         $payload = [
             'model' => $model,
             'input' => $input,
@@ -130,7 +144,7 @@ class ChatController extends Controller
         }
 
         $maxOutputTokens = (int) config('services.openai.max_output_tokens', 0);
-        $minOutputTokens = str_starts_with($model, 'gpt-5') ? 600 : 300;
+        $minOutputTokens = str_starts_with($model, 'gpt-5') ? 1200 : 300;
         if ($maxOutputTokens <= 0 || $maxOutputTokens < $minOutputTokens) {
             $maxOutputTokens = $minOutputTokens;
         }
@@ -155,11 +169,7 @@ class ChatController extends Controller
         }
 
         try {
-            $response = Http::withToken($apiKey)
-                ->acceptJson()
-                ->timeout($timeout)
-                ->withOptions(['verify' => $verify])
-                ->post($baseUrl.'/responses', $payload);
+            $response = $this->requestOpenAi($apiKey, $baseUrl, $payload, $timeout, $verify);
         } catch (ConnectionException $e) {
             Log::error('OpenAI connection failed.', [
                 'error' => $e->getMessage(),
@@ -194,6 +204,50 @@ class ChatController extends Controller
         }
 
         $text = $this->extractOutputText($body);
+        if ($text === '' && $this->isMaxOutputTokensIncomplete($body)) {
+            $retryMaxOutputTokens = max((int) $payload['max_output_tokens'] * 2, 1200);
+            $retryMaxOutputTokens = min($retryMaxOutputTokens, 2400);
+            if ($retryMaxOutputTokens > $payload['max_output_tokens']) {
+                $payload['max_output_tokens'] = $retryMaxOutputTokens;
+
+                try {
+                    $response = $this->requestOpenAi($apiKey, $baseUrl, $payload, $timeout, $verify);
+                } catch (ConnectionException $e) {
+                    Log::error('OpenAI connection failed.', [
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    return response()->json([
+                        'error' => 'OpenAI connection failed. Check SSL configuration.',
+                    ], 502);
+                }
+
+                if (! $response->successful()) {
+                    Log::error('OpenAI API request failed.', [
+                        'status' => $response->status(),
+                        'body' => $response->body(),
+                    ]);
+
+                    return response()->json([
+                        'error' => 'OpenAI API request failed.',
+                    ], 502);
+                }
+
+                $body = $response->json();
+                if (! is_array($body)) {
+                    Log::error('OpenAI API response was not JSON.', [
+                        'status' => $response->status(),
+                        'body' => $response->body(),
+                    ]);
+
+                    return response()->json([
+                        'error' => 'OpenAI API returned an invalid response.',
+                    ], 502);
+                }
+
+                $text = $this->extractOutputText($body);
+            }
+        }
         if ($text === '') {
             Log::error('OpenAI API returned empty output.', [
                 'status' => $response->status(),
@@ -209,8 +263,15 @@ class ChatController extends Controller
         if ($parsed && $request->user()) {
             try {
                 if (Schema::hasTable('gut_requests')) {
-                    GutRequest::create([
+                    $title = $this->normalizeTitle($parsed['title'] ?? null);
+                    if (! $title) {
+                        $title = $this->makeTitleFromMessage($data['message']);
+                    }
+                    $summary = $this->normalizeSummary($parsed['summary'] ?? null);
+                    $gutRequest = GutRequest::create([
                         'user_id' => $request->user()->id,
+                        'title' => $title,
+                        'summary' => $summary,
                         'message' => $data['message'],
                         'sector' => $parsed['sector'],
                         'gravity' => $parsed['gravity'],
@@ -219,6 +280,12 @@ class ChatController extends Controller
                         'score' => $parsed['score'],
                         'response_text' => $text,
                     ]);
+                    if (! $title) {
+                        $gutRequest->update([
+                            'title' => $this->makeTitle($parsed['sector'] ?? null, $gutRequest->id),
+                        ]);
+                    }
+                    $this->storeAttachments($request, $conversationId, $messageId, $gutRequest->id);
                 }
             } catch (\Throwable $e) {
                 Log::error('Failed to persist GUT request.', [
@@ -244,9 +311,36 @@ class ChatController extends Controller
 
         return response()->json([
             'text' => $text,
+            'conversation_id' => $conversationId,
             'response_id' => $body['id'] ?? null,
             'model' => $body['model'] ?? $payload['model'],
         ]);
+    }
+
+    private function requestOpenAi(string $apiKey, string $baseUrl, array $payload, int $timeout, $verify)
+    {
+        $response = $this->sendOpenAiRequest($apiKey, $baseUrl, $payload, $timeout, $verify);
+
+        if (! $response->successful() && $this->shouldRetryStatus($response->status())) {
+            usleep(200000);
+            $response = $this->sendOpenAiRequest($apiKey, $baseUrl, $payload, $timeout, $verify);
+        }
+
+        return $response;
+    }
+
+    private function sendOpenAiRequest(string $apiKey, string $baseUrl, array $payload, int $timeout, $verify)
+    {
+        return Http::withToken($apiKey)
+            ->acceptJson()
+            ->timeout($timeout)
+            ->withOptions(['verify' => $verify])
+            ->post($baseUrl.'/responses', $payload);
+    }
+
+    private function shouldRetryStatus(int $status): bool
+    {
+        return $status === 429 || $status >= 500;
     }
 
     private function extractOutputText(array $body): string
@@ -314,6 +408,12 @@ class ChatController extends Controller
         return $fallback;
     }
 
+    private function isMaxOutputTokensIncomplete(array $body): bool
+    {
+        return ($body['status'] ?? '') === 'incomplete'
+            && (($body['incomplete_details']['reason'] ?? '') === 'max_output_tokens');
+    }
+
     private function parseGutResponse(string $text, ?string $forcedSector = null): ?array
     {
         if ($text === '') {
@@ -326,9 +426,27 @@ class ChatController extends Controller
         $gravity = null;
         $urgency = null;
         $trend = null;
+        $title = null;
+        $summary = null;
 
         if (preg_match('/Setor(?:\s*(?:selecionado|escolhido))?\s*:\s*(mkt|juridico|rh)\b/i', $normalizedText, $match)) {
             $sector = strtolower($match[1]);
+        }
+
+        if (preg_match('/^(?:Titulo|Title)\s*:\s*(.+)$/mi', $text, $match)) {
+            $title = trim((string) $match[1]);
+        } elseif (preg_match('/^(?:Titulo|Title)\s*:\s*(.+)$/mi', $normalizedText, $match)) {
+            $title = trim((string) $match[1]);
+        }
+
+        if (preg_match('/^Resumo\s*:\s*(.*?)(?:\n\s*Gravidade\b)/si', $text, $match)) {
+            $summary = trim((string) $match[1]);
+        } elseif (preg_match('/^Resumo\s*:\s*(.*?)(?:\n\s*Gravidade\b)/si', $normalizedText, $match)) {
+            $summary = trim((string) $match[1]);
+        } elseif (preg_match('/^Resumo\s*:\s*(.+)$/mi', $text, $match)) {
+            $summary = trim((string) $match[1]);
+        } elseif (preg_match('/^Resumo\s*:\s*(.+)$/mi', $normalizedText, $match)) {
+            $summary = trim((string) $match[1]);
         }
 
         if ($forcedSector && in_array($forcedSector, self::SECTORS, true)) {
@@ -361,6 +479,179 @@ class ChatController extends Controller
             'urgency' => $urgency,
             'trend' => $trend,
             'score' => $gravity * $urgency * $trend,
+            'title' => $title,
+            'summary' => $summary,
         ];
+    }
+
+    private function storeAttachments(Request $request, string $conversationId, string $messageId, int $gutRequestId): int
+    {
+        $user = $request->user();
+        if (! $user || ! $request->hasFile('attachments')) {
+            return 0;
+        }
+
+        $files = $request->file('attachments', []);
+        if (! is_array($files)) {
+            $files = [$files];
+        }
+
+        $rows = [];
+        $now = now();
+        foreach ($files as $file) {
+            if (! $file || ! $file->isValid()) {
+                continue;
+            }
+
+            $extension = $file->getClientOriginalExtension();
+            $filename = (string) Str::uuid();
+            if ($extension !== '') {
+                $filename .= '.'.$extension;
+            }
+            $path = $file->storeAs('gut-attachments/'.$conversationId, $filename);
+
+            $rows[] = [
+                'gut_request_id' => $gutRequestId,
+                'conversation_id' => $conversationId,
+                'message_id' => $messageId,
+                'user_id' => $user->id,
+                'path' => $path,
+                'original_name' => $file->getClientOriginalName(),
+                'mime' => (string) $file->getClientMimeType(),
+                'size' => (int) $file->getSize(),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        if (empty($rows)) {
+            return 0;
+        }
+
+        GutRequestAttachment::insert($rows);
+
+        return count($rows);
+    }
+
+    private function makeTitle(?string $sector = null, ?int $id = null): string
+    {
+        $sectorLabel = $sector ? strtoupper($sector) : 'GERAL';
+
+        if ($id) {
+            return 'Demanda #'.$id.' - '.$sectorLabel;
+        }
+
+        return 'Demanda - '.$sectorLabel;
+    }
+
+    private function normalizeTitle(?string $title): ?string
+    {
+        if ($title === null) {
+            return null;
+        }
+
+        $title = Str::ascii($title);
+        $title = trim(preg_replace('/\s+/', ' ', $title));
+        if ($title === '') {
+            return null;
+        }
+
+        if (preg_match('/^(demanda|solicitacao|solicitacao|chamado)\b/i', $title)) {
+            return null;
+        }
+
+        $words = preg_split('/\s+/', $title);
+        $words = is_array($words) ? array_values(array_filter($words, fn ($word) => $word !== '')) : [];
+        if (count($words) < 2) {
+            return null;
+        }
+        if (count($words) > 6) {
+            $title = implode(' ', array_slice($words, 0, 6));
+        }
+
+        if (strlen($title) > 80) {
+            $title = substr($title, 0, 77).'...';
+        }
+
+        return $title;
+    }
+
+    private function normalizeSummary(?string $summary): ?string
+    {
+        if ($summary === null) {
+            return null;
+        }
+
+        $summary = Str::ascii($summary);
+        $summary = str_replace(["\r\n", "\r"], "\n", $summary);
+        $lines = array_map('trim', explode("\n", $summary));
+        $lines = array_values(array_filter($lines, fn ($line) => $line !== ''));
+        if (empty($lines)) {
+            return null;
+        }
+        if (count($lines) > 3) {
+            $lines = array_slice($lines, 0, 3);
+        }
+
+        $lines = array_map(function ($line) {
+            return preg_replace('/\s+/', ' ', $line);
+        }, $lines);
+
+        $summary = implode("\n", $lines);
+        $summary = trim(preg_replace('/\n{3,}/', "\n\n", $summary));
+        if (strlen($summary) > 320) {
+            $summary = substr($summary, 0, 317).'...';
+        }
+
+        return $summary;
+    }
+
+    private function makeTitleFromMessage(string $message): ?string
+    {
+        $clean = Str::ascii(mb_strtolower($message, 'UTF-8'));
+        $clean = preg_replace('/[^a-z0-9\s]/', ' ', $clean);
+        $words = preg_split('/\s+/', $clean);
+        if (! is_array($words)) {
+            return null;
+        }
+
+        $stopwords = [
+            'a', 'o', 'os', 'as', 'de', 'da', 'do', 'dos', 'das', 'e', 'em', 'para', 'por',
+            'com', 'sem', 'um', 'uma', 'uns', 'umas', 'no', 'na', 'nos', 'nas', 'ao', 'aos',
+            'que', 'se', 'pra', 'pro', 'sobre', 'entre', 'assim', 'isso', 'isto', 'preciso',
+            'precisa', 'gostaria', 'solicito', 'solicitacao', 'demanda', 'ajuda', 'favor',
+            'porfavor', 'favor', 'meu', 'minha', 'minhas', 'meus', 'ate', 'ate', 'hoje',
+        ];
+        $stopwords = array_flip($stopwords);
+
+        $keywords = [];
+        foreach ($words as $word) {
+            if ($word === '' || isset($stopwords[$word])) {
+                continue;
+            }
+            if (strlen($word) < 4) {
+                continue;
+            }
+            if (! preg_match('/[a-z]/', $word)) {
+                continue;
+            }
+            if (! in_array($word, $keywords, true)) {
+                $keywords[] = $word;
+            }
+            if (count($keywords) >= 4) {
+                break;
+            }
+        }
+
+        if (empty($keywords)) {
+            return null;
+        }
+
+        $title = implode(' ', array_map('ucfirst', $keywords));
+        if (strlen($title) > 80) {
+            $title = substr($title, 0, 77).'...';
+        }
+
+        return $title;
     }
 }

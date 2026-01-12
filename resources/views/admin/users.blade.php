@@ -12,6 +12,9 @@
         $roleOptions = collect($roles ?? [])->mapWithKeys(function ($role) {
             return [$role => strtoupper($role)];
         })->all();
+        $allUsers = $users ?? collect();
+        $staffUsers = $allUsers->filter(fn ($user) => $user->role !== 'user');
+        $regularUsers = $allUsers->filter(fn ($user) => $user->role === 'user');
     @endphp
 
     <div class="py-12">
@@ -79,15 +82,33 @@
                     </div>
                 </div>
 
-                <div class="bg-white dark:bg-gray-800 overflow-visible shadow-sm sm:rounded-lg">
+                <div class="bg-white dark:bg-gray-800 overflow-visible shadow-sm sm:rounded-lg" x-data="{ tab: 'staff' }">
                     <div class="p-6 text-gray-900 dark:text-gray-100">
                         <div class="text-lg font-semibold">Usuarios</div>
 
-                        @if ($users->isEmpty())
+                        @if ($allUsers->isEmpty())
                             <div class="mt-4 text-sm text-gray-500 dark:text-gray-400">
                                 Nenhum usuario cadastrado.
                             </div>
                         @else
+                            <div class="mt-4 flex flex-wrap gap-2">
+                                <button type="button"
+                                    class="rounded-full px-4 py-2 text-sm font-semibold transition border"
+                                    :class="tab === 'staff'
+                                        ? 'btn-accent border-transparent'
+                                        : 'border-gray-200 text-gray-600 dark:text-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900'"
+                                    @click="tab = 'staff'">
+                                    Funcionarios ({{ $staffUsers->count() }})
+                                </button>
+                                <button type="button"
+                                    class="rounded-full px-4 py-2 text-sm font-semibold transition border theme-default"
+                                    :class="tab === 'regular'
+                                        ? 'btn-accent border-transparent'
+                                        : 'border-gray-200 text-gray-600 dark:text-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900'"
+                                    @click="tab = 'regular'">
+                                    Usuarios ({{ $regularUsers->count() }})
+                                </button>
+                            </div>
                             <div class="mt-4 overflow-visible">
                                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
                                     <thead class="text-left text-gray-500 dark:text-gray-400">
@@ -97,8 +118,50 @@
                                             <th class="py-2 pr-4 font-medium">Alterar role</th>
                                         </tr>
                                     </thead>
-                                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                                        @foreach ($users as $user)
+                                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700" x-show="tab === 'staff'" x-cloak>
+                                        @if ($staffUsers->isEmpty())
+                                            <tr>
+                                                <td colspan="3" class="py-4 text-sm text-gray-500 dark:text-gray-400">
+                                                    Nenhum funcionario cadastrado.
+                                                </td>
+                                            </tr>
+                                        @else
+                                            @foreach ($staffUsers as $user)
+                                                <tr>
+                                                    <td class="py-3 pr-4">
+                                                        <div class="font-medium text-gray-900 dark:text-gray-100">
+                                                            {{ $user->name }}
+                                                        </div>
+                                                        <div class="text-xs text-gray-500 dark:text-gray-400 break-all">
+                                                            {{ $user->email }}
+                                                        </div>
+                                                    </td>
+                                                    <td class="py-3 pr-4 text-gray-700 dark:text-gray-200">
+                                                        {{ strtoupper($user->role) }}
+                                                    </td>
+                                                    <td class="py-3 pr-4">
+                                                        <form method="POST" action="{{ route('admin.users.update-role', $user) }}" class="flex flex-col sm:flex-row gap-2 sm:items-center">
+                                                            @csrf
+                                                            @method('PATCH')
+                                                            <x-select-dropdown name="role" class="w-full sm:w-44" :options="$roleOptions" :value="$user->role" :theme-by-value="true" :use-old="false" />
+                                                            <button type="submit" class="rounded-md btn-accent px-3 py-2 text-xs">
+                                                                Atualizar
+                                                            </button>
+                                                        </form>
+                                                    </td>
+                                                </tr>
+                                            @endforeach
+                                        @endif
+                                    </tbody>
+                                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700 theme-default" x-show="tab === 'regular'" x-cloak>
+                                        @if ($regularUsers->isEmpty())
+                                            <tr>
+                                                <td colspan="3" class="py-4 text-sm text-gray-500 dark:text-gray-400">
+                                                    Nenhum usuario normal cadastrado.
+                                                </td>
+                                            </tr>
+                                        @else
+                                            @foreach ($regularUsers as $user)
                                             <tr>
                                                 <td class="py-3 pr-4">
                                                     <div class="font-medium text-gray-900 dark:text-gray-100">
@@ -122,7 +185,8 @@
                                                     </form>
                                                 </td>
                                             </tr>
-                                        @endforeach
+                                            @endforeach
+                                        @endif
                                     </tbody>
                                 </table>
                             </div>

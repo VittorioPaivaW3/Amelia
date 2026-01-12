@@ -16,7 +16,7 @@
         <div class="app-nav-shell">
             <div class="app-nav-inner">
                 <div class="flex items-center gap-4">
-                    <a href="{{ route('dashboard') }}" class="app-nav-logo">
+                    <a href="{{ route('calls.index') }}" class="app-nav-logo" aria-label="Abrir chamados">
                         <img src="{{ asset('img/Amelia.png') }}" alt="Amelia" class="h-6 w-6">
                     </a>
 
@@ -139,4 +139,5 @@
             </div>
         </div>
     </div>
+
 </nav>

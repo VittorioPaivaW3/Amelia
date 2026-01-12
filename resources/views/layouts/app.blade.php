@@ -19,6 +19,7 @@
     @php
         $role = auth()->user()?->role;
         $themeClass = match ($role) {
+            'admin' => 'theme-admin',
             'juridico' => 'theme-juridico',
             'mkt' => 'theme-mkt',
             'rh' => 'theme-rh',
