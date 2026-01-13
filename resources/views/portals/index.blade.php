@@ -149,7 +149,7 @@
                              x-cloak
                              class="fixed inset-0 z-50 flex items-center justify-center">
                             <div class="absolute inset-0 bg-black/50" @click="openId = null"></div>
-                            <div class="relative w-[calc(100%-2rem)] sm:w-full max-w-3xl max-h-[85vh] overflow-y-auto">
+                            <div class="relative w-[calc(100%-2rem)] sm:w-full max-w-3xl max-h-[85vh] overflow-y-auto no-scrollbar">
                                 <div class="request-modal" style="--modal-accent: {{ $colors['accent'] ?? '#6b7280' }};">
                                     <div class="request-modal__header">
                                         <div>
@@ -214,19 +214,66 @@
                                             </div>
                                         </div>
 
-                                        <div class="request-modal__section">
-                                            <div class="request-modal__label">Mensagem</div>
-                                            <div class="request-modal__text whitespace-pre-line">
-                                                {{ $requestItem->message }}
-                                            </div>
-                                        </div>
+                                        @php
+                                            $hasSecondConversation = ($requestItem->original_message ?? '') !== ''
+                                                || ($requestItem->original_response_text ?? '') !== '';
+                                        @endphp
 
-                                        <div class="request-modal__section">
-                                            <div class="request-modal__label">Resposta do chat</div>
-                                            <div class="request-modal__text whitespace-pre-line">
-                                                {{ $requestItem->response_text ?? 'Sem resposta registrada.' }}
+                                        @if ($hasSecondConversation)
+                                            <div class="request-modal__section" x-data="{ convoTab: 'current' }">
+                                                <div class="request-modal__label">Conversa com o chat</div>
+                                                <div class="request-modal__tabs">
+                                                    <button type="button"
+                                                        class="request-modal__tab"
+                                                        :class="convoTab === 'original' ? 'is-active' : ''"
+                                                        @click="convoTab = 'original'">
+                                                        Conversa 1
+                                                    </button>
+                                                    <button type="button"
+                                                        class="request-modal__tab"
+                                                        :class="convoTab === 'current' ? 'is-active' : ''"
+                                                        @click="convoTab = 'current'">
+                                                        Conversa 2
+                                                    </button>
+                                                </div>
+
+                                                <div class="request-modal__tab-panel" x-show="convoTab === 'original'" x-cloak>
+                                                    <div class="request-modal__label">Mensagem</div>
+                                                    <div class="request-modal__text whitespace-pre-line">
+                                                        {{ $requestItem->original_message ?? 'Sem mensagem registrada.' }}
+                                                    </div>
+                                                    <div class="request-modal__label">Resposta do chat</div>
+                                                    <div class="request-modal__text whitespace-pre-line">
+                                                        {{ $requestItem->original_response_text ?? 'Sem resposta registrada.' }}
+                                                    </div>
+                                                </div>
+
+                                                <div class="request-modal__tab-panel" x-show="convoTab === 'current'" x-cloak>
+                                                    <div class="request-modal__label">Mensagem</div>
+                                                    <div class="request-modal__text whitespace-pre-line">
+                                                        {{ $requestItem->message }}
+                                                    </div>
+                                                    <div class="request-modal__label">Resposta do chat</div>
+                                                    <div class="request-modal__text whitespace-pre-line">
+                                                        {{ $requestItem->response_text ?? 'Sem resposta registrada.' }}
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
+                                        @else
+                                            <div class="request-modal__section">
+                                                <div class="request-modal__label">Mensagem</div>
+                                                <div class="request-modal__text whitespace-pre-line">
+                                                    {{ $requestItem->message }}
+                                                </div>
+                                            </div>
+
+                                            <div class="request-modal__section">
+                                                <div class="request-modal__label">Resposta do chat</div>
+                                                <div class="request-modal__text whitespace-pre-line">
+                                                    {{ $requestItem->response_text ?? 'Sem resposta registrada.' }}
+                                                </div>
+                                            </div>
+                                        @endif
 
                                         @php
                                             $attachments = $requestItem->attachments ?? collect();

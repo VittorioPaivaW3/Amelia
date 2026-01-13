@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Rules\Cpf;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
@@ -27,9 +28,33 @@ class LoginRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'email' => ['required', 'string', 'email'],
+            'login' => [
+                'required',
+                'string',
+                'max:255',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ($this->looksLikeEmail($value)) {
+                        return;
+                    }
+
+                    if (! Cpf::isValid($value)) {
+                        $fail('Informe um email ou CPF valido.');
+                    }
+                },
+            ],
             'password' => ['required', 'string'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $login = $this->input('login');
+
+        if ($login !== null && ! $this->looksLikeEmail($login)) {
+            $this->merge([
+                'login' => Cpf::normalize($login),
+            ]);
+        }
     }
 
     /**
@@ -41,11 +66,20 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
+        $login = $this->input('login');
+        $credentials = ['password' => $this->input('password')];
+
+        if ($this->looksLikeEmail($login)) {
+            $credentials['email'] = Str::lower((string) $login);
+        } else {
+            $credentials['cpf'] = Cpf::normalize($login);
+        }
+
+        if (! Auth::attempt($credentials, $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
-                'email' => trans('auth.failed'),
+                'login' => trans('auth.failed'),
             ]);
         }
 
@@ -68,7 +102,7 @@ class LoginRequest extends FormRequest
         $seconds = RateLimiter::availableIn($this->throttleKey());
 
         throw ValidationException::withMessages([
-            'email' => trans('auth.throttle', [
+            'login' => trans('auth.throttle', [
                 'seconds' => $seconds,
                 'minutes' => ceil($seconds / 60),
             ]),
@@ -80,6 +114,16 @@ class LoginRequest extends FormRequest
      */
     public function throttleKey(): string
     {
-        return Str::transliterate(Str::lower($this->string('email')).'|'.$this->ip());
+        $login = (string) $this->string('login');
+        $login = $this->looksLikeEmail($login)
+            ? Str::lower($login)
+            : Cpf::normalize($login);
+
+        return Str::transliterate($login.'|'.$this->ip());
+    }
+
+    private function looksLikeEmail(mixed $value): bool
+    {
+        return filter_var($value, FILTER_VALIDATE_EMAIL) !== false;
     }
 }

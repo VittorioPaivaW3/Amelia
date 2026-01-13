@@ -23,9 +23,7 @@ Route::get('/relatorios/export', [GutRequestController::class, 'export'])
     ->name('reports.export');
 
 Route::middleware('auth')->group(function () {
-    Route::get('/chat', function () {
-        return view('chat');
-    })->name('chat');
+    Route::get('/chat', [ChatController::class, 'show'])->name('chat');
     Route::post('/chat', ChatController::class)->name('chat.respond');
     Route::get('/attachments/{attachment}', [GutRequestAttachmentController::class, 'download'])
         ->name('attachments.download');
@@ -51,7 +49,8 @@ Route::middleware('auth')->group(function () {
         ->group(function () {
             Route::get('/users', [AdminUserController::class, 'index'])->name('users.index');
             Route::post('/users', [AdminUserController::class, 'store'])->name('users.store');
-            Route::patch('/users/{user}', [AdminUserController::class, 'updateRole'])->name('users.update-role');
+            Route::patch('/users/{user}', [AdminUserController::class, 'update'])->name('users.update');
+            Route::delete('/users/{user}', [AdminUserController::class, 'destroy'])->name('users.destroy');
         });
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');

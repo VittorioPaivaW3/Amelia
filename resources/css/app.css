@@ -6,6 +6,15 @@
   display: none !important;
 }
 
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 :root {
   --accent: #8DC63F;
   --accent-hover: #63BE15;
@@ -60,10 +69,10 @@
   --accent: #FBBF24;
   --accent-hover: #F59E0B;
   --accent-soft: rgba(251, 191, 36, 0.2);
-  --accent-contrast: #111827;
-  --nav-text: #111827;
-  --nav-hover: rgba(17, 24, 39, 0.12);
-  --nav-border: rgba(17, 24, 39, 0.18);
+  --accent-contrast: #ffffff;
+  --nav-text: #ffffff;
+  --nav-hover: rgba(255, 255, 255, 0.2);
+  --nav-border: rgba(255, 255, 255, 0.2);
     --nav-active-text: #F59E0B;
 }
 
@@ -684,6 +693,7 @@
     margin-left: 1px;
   }
 
+
   .request-modal {
     background: #ffffff;
     border-radius: 1.5rem;
@@ -809,6 +819,38 @@
     gap: 0.45rem;
   }
 
+  .request-modal__tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .request-modal__tab {
+    border-radius: 9999px;
+    padding: 0.35rem 0.85rem;
+    border: 1px solid rgba(17, 24, 39, 0.12);
+    background: #f3f4f6;
+    color: #6b7280;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+  }
+
+  .request-modal__tab.is-active {
+    background: var(--modal-accent, #111827);
+    border-color: var(--modal-accent, #111827);
+    color: #ffffff;
+  }
+
+  .request-modal__tab-panel {
+    display: grid;
+    gap: 0.6rem;
+  }
+
   .request-modal__text {
     background: #ffffff;
     border: 1px solid rgba(17, 24, 39, 0.08);
@@ -912,6 +954,18 @@
     background: rgba(15, 23, 42, 0.9);
     border-color: rgba(148, 163, 184, 0.2);
     color: #e5e7eb;
+  }
+
+  .dark .request-modal__tab {
+    background: rgba(15, 23, 42, 0.9);
+    border-color: rgba(148, 163, 184, 0.3);
+    color: #cbd5f5;
+  }
+
+  .dark .request-modal__tab.is-active {
+    background: var(--modal-accent, #e2e8f0);
+    border-color: var(--modal-accent, #e2e8f0);
+    color: #ffffff;
   }
 
   .dark .request-modal__attachment {

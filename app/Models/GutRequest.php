@@ -11,6 +11,7 @@ class GutRequest extends Model
         'title',
         'summary',
         'message',
+        'original_message',
         'sector',
         'gravity',
         'urgency',
@@ -21,6 +22,7 @@ class GutRequest extends Model
         'accepted_at',
         'rejection_reason',
         'response_text',
+        'original_response_text',
     ];
 
     protected $casts = [

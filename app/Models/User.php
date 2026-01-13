@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Rules\Cpf;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -20,6 +22,7 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'cpf',
         'password',
         'role',
         'profile_photo_path',
@@ -46,5 +49,12 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    protected function cpf(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value === null ? null : Cpf::normalize($value),
+        );
     }
 }

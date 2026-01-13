@@ -11,10 +11,64 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\View\View;
 
 class ChatController extends Controller
 {
     private const SECTORS = ['mkt', 'juridico', 'rh'];
+
+    public function show(Request $request): View
+    {
+        $editRequest = null;
+        $prefillMessages = [];
+
+        $requestId = (int) $request->query('request_id', 0);
+        if ($requestId > 0 && $request->user()) {
+            $editRequest = GutRequest::query()
+                ->whereKey($requestId)
+                ->where('user_id', $request->user()->id)
+                ->first();
+
+            if (! $editRequest) {
+                abort(404);
+            }
+
+            if (! in_array($editRequest->status ?? '', ['novo', ''], true)) {
+                abort(403, 'Solicitacao nao pode ser editada.');
+            }
+
+            $sector = (string) ($editRequest->sector ?? '');
+            if ($sector !== '') {
+                $request->session()->put('chat_sector', $sector);
+            }
+
+            if (($editRequest->message ?? '') !== '') {
+                $prefillMessages[] = [
+                    'role' => 'user',
+                    'text' => $editRequest->message,
+                ];
+            }
+            if (($editRequest->response_text ?? '') !== '') {
+                $prefillMessages[] = [
+                    'role' => 'assistant',
+                    'text' => $editRequest->response_text,
+                ];
+            }
+
+            if (! empty($prefillMessages)) {
+                $request->session()->put('chat_history', $prefillMessages);
+            }
+
+            $effectivePrompt = $this->buildEffectivePrompt($sector);
+            $request->session()->put('chat_prompt_hash', hash('sha256', $effectivePrompt));
+        }
+
+        return view('chat', [
+            'editRequestId' => $editRequest?->id,
+            'editSector' => $editRequest?->sector,
+            'prefillMessages' => $prefillMessages,
+        ]);
+    }
 
     public function __invoke(Request $request): JsonResponse
     {
@@ -22,9 +76,31 @@ class ChatController extends Controller
             'message' => ['required', 'string', 'max:4000'],
             'sector' => ['nullable', 'string', 'in:'.implode(',', self::SECTORS)],
             'message_id' => ['nullable', 'string', 'max:36'],
+            'request_id' => ['nullable', 'integer', 'min:1'],
             'attachments' => ['nullable', 'array', 'max:5'],
             'attachments.*' => ['file', 'max:10240', 'mimes:jpg,jpeg,png,pdf,doc,docx,xls,xlsx,ppt,pptx,txt'],
         ]);
+
+        $editRequest = null;
+        $requestId = (int) ($data['request_id'] ?? 0);
+        if ($requestId > 0 && $request->user()) {
+            $editRequest = GutRequest::query()
+                ->whereKey($requestId)
+                ->where('user_id', $request->user()->id)
+                ->first();
+
+            if (! $editRequest) {
+                return response()->json([
+                    'error' => 'Solicitacao nao encontrada.',
+                ], 404);
+            }
+
+            if (! in_array($editRequest->status ?? '', ['novo', ''], true)) {
+                return response()->json([
+                    'error' => 'Solicitacao nao pode ser editada.',
+                ], 403);
+            }
+        }
 
         $apiKey = config('services.openai.key');
         if (! $apiKey) {
@@ -33,7 +109,6 @@ class ChatController extends Controller
             ], 500);
         }
 
-        $systemPrompt = trim((string) config('services.openai.system_prompt', ''));
         $sector = '';
         if (isset($data['sector']) && is_string($data['sector']) && $data['sector'] !== '') {
             $sector = strtolower($data['sector']);
@@ -48,11 +123,7 @@ class ChatController extends Controller
             $request->session()->put('chat_sector', $sector);
         }
 
-        $effectivePrompt = $systemPrompt;
-        if ($sector !== '') {
-            $sectorNote = 'Setor selecionado: '.strtoupper($sector).'. Use exatamente "Setor: '.$sector.'" no formato e responda apenas sobre esse setor.';
-            $effectivePrompt = trim($systemPrompt !== '' ? $systemPrompt."\n\n".$sectorNote : $sectorNote);
-        }
+        $effectivePrompt = $this->buildEffectivePrompt($sector);
         $input = [];
 
         if ($effectivePrompt !== '') {
@@ -268,24 +339,56 @@ class ChatController extends Controller
                         $title = $this->makeTitleFromMessage($data['message']);
                     }
                     $summary = $this->normalizeSummary($parsed['summary'] ?? null);
-                    $gutRequest = GutRequest::create([
-                        'user_id' => $request->user()->id,
-                        'title' => $title,
-                        'summary' => $summary,
-                        'message' => $data['message'],
-                        'sector' => $parsed['sector'],
-                        'gravity' => $parsed['gravity'],
-                        'urgency' => $parsed['urgency'],
-                        'trend' => $parsed['trend'],
-                        'score' => $parsed['score'],
-                        'response_text' => $text,
-                    ]);
-                    if (! $title) {
-                        $gutRequest->update([
-                            'title' => $this->makeTitle($parsed['sector'] ?? null, $gutRequest->id),
+                    if ($editRequest) {
+                        $originalMessage = $editRequest->original_message;
+                        if ($originalMessage === null || $originalMessage === '') {
+                            $originalMessage = $editRequest->message;
+                        }
+                        $originalResponse = $editRequest->original_response_text;
+                        if ($originalResponse === null || $originalResponse === '') {
+                            $originalResponse = $editRequest->response_text;
+                        }
+
+                        if (! $title) {
+                            $title = $editRequest->title ?: $this->makeTitle($parsed['sector'] ?? null, $editRequest->id);
+                        }
+                        if (! $summary) {
+                            $summary = $editRequest->summary;
+                        }
+                        $editRequest->update([
+                            'title' => $title,
+                            'summary' => $summary,
+                            'message' => $data['message'],
+                            'original_message' => $originalMessage,
+                            'sector' => $parsed['sector'],
+                            'gravity' => $parsed['gravity'],
+                            'urgency' => $parsed['urgency'],
+                            'trend' => $parsed['trend'],
+                            'score' => $parsed['score'],
+                            'response_text' => $text,
+                            'original_response_text' => $originalResponse,
                         ]);
+                        $this->storeAttachments($request, $conversationId, $messageId, $editRequest->id);
+                    } else {
+                        $gutRequest = GutRequest::create([
+                            'user_id' => $request->user()->id,
+                            'title' => $title,
+                            'summary' => $summary,
+                            'message' => $data['message'],
+                            'sector' => $parsed['sector'],
+                            'gravity' => $parsed['gravity'],
+                            'urgency' => $parsed['urgency'],
+                            'trend' => $parsed['trend'],
+                            'score' => $parsed['score'],
+                            'response_text' => $text,
+                        ]);
+                        if (! $title) {
+                            $gutRequest->update([
+                                'title' => $this->makeTitle($parsed['sector'] ?? null, $gutRequest->id),
+                            ]);
+                        }
+                        $this->storeAttachments($request, $conversationId, $messageId, $gutRequest->id);
                     }
-                    $this->storeAttachments($request, $conversationId, $messageId, $gutRequest->id);
                 }
             } catch (\Throwable $e) {
                 Log::error('Failed to persist GUT request.', [
@@ -604,6 +707,17 @@ class ChatController extends Controller
         }
 
         return $summary;
+    }
+
+    private function buildEffectivePrompt(string $sector = ''): string
+    {
+        $systemPrompt = trim((string) config('services.openai.system_prompt', ''));
+        if ($sector === '') {
+            return $systemPrompt;
+        }
+
+        $sectorNote = 'Setor selecionado: '.strtoupper($sector).'. Use exatamente "Setor: '.$sector.'" no formato e responda apenas sobre esse setor.';
+        return trim($systemPrompt !== '' ? $systemPrompt."\n\n".$sectorNote : $sectorNote);
     }
 
     private function makeTitleFromMessage(string $message): ?string

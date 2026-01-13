@@ -5,6 +5,12 @@
         </h2>
     </x-slot>
 
+    @php
+        $prefillMessages = $prefillMessages ?? [];
+        $editRequestId = $editRequestId ?? null;
+        $editSector = $editSector ?? '';
+    @endphp
+
     <div class="py-12">
         <div class="max-w-6xl mx-auto sm:px-6 lg:px-8">
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
@@ -78,6 +84,9 @@
             const chatTheme = document.getElementById('chat-theme');
             const sectorHint = document.getElementById('chat-sector-hint');
             const sectorButtons = document.querySelectorAll('.chat-sector-btn');
+            const prefillMessages = @json($prefillMessages);
+            const editRequestId = @json($editRequestId);
+            const prefillSector = @json($editSector);
 
             let selectedSector = '';
             let isPending = false;
@@ -178,6 +187,29 @@
                     lockSector = true;
                     updateSectorUI();
                 }
+            };
+
+            const applyPrefill = () => {
+                if (prefillSector) {
+                    setSector(prefillSector);
+                }
+
+                if (!prefillMessages.length) {
+                    return;
+                }
+
+                const sectorCard = log.querySelector('.chat-sector-card');
+                if (sectorCard) {
+                    sectorCard.remove();
+                }
+
+                prefillMessages.forEach((item) => {
+                    if (!item || !item.text) {
+                        return;
+                    }
+                    const role = item.role === 'user' ? 'user' : 'assistant';
+                    appendMessage(role, item.text);
+                });
             };
 
             let pendingEl = null;
@@ -304,6 +336,9 @@
                     formData.append('message', text);
                     formData.append('sector', selectedSector);
                     formData.append('message_id', messageId);
+                    if (editRequestId) {
+                        formData.append('request_id', editRequestId);
+                    }
                     pendingFiles.forEach((file) => {
                         formData.append('attachments[]', file);
                     });
@@ -322,6 +357,7 @@
                 }
             });
 
+            applyPrefill();
             updateFormState();
             updateSectorUI();
             updatePanelVisibility();
