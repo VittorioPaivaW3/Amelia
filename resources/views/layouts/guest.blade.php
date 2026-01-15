@@ -7,7 +7,21 @@
 
         <link rel="icon" href="{{ asset('img/Amelia.png') }}" type="image/png">
 
-        <title>{{ config('app.name', 'GUTO') }}</title>
+        @php
+            $routeName = request()->route()?->getName();
+            $titleMap = [
+                'login' => 'Login',
+                'register' => 'Cadastro',
+                'password.request' => 'Recuperar senha',
+                'password.reset' => 'Redefinir senha',
+                'password.confirm' => 'Confirmar senha',
+                'verification.notice' => 'Verificar email',
+            ];
+            $pageTitle = $pageTitle ?? $title ?? ($titleMap[$routeName] ?? '');
+            $appTitle = 'Amelia';
+            $fullTitle = $pageTitle !== '' ? $pageTitle.' - '.$appTitle : $appTitle;
+        @endphp
+        <title>{{ $fullTitle }}</title>
 
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />

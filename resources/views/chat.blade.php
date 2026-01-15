@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="header">
         <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
-            Am?l.ia
+            Amélia
         </h2>
     </x-slot>
 
@@ -9,6 +9,8 @@
         $prefillMessages = $prefillMessages ?? [];
         $editRequestId = $editRequestId ?? null;
         $editSector = $editSector ?? '';
+        $role = auth()->user()?->role;
+        $showSectorPicker = in_array($role, ['admin', 'mkt', 'juridico', 'rh'], true);
     @endphp
 
     <div class="py-12">
@@ -17,30 +19,32 @@
                 <div id="chat-theme" class="chat-theme p-6 text-gray-900 dark:text-gray-100" data-theme="">
                     <div id="chat-panel">
                         <div id="chat-log" class="chat-log space-y-4 min-h-[60vh] lg:min-h-[70vh] border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-900">
-                            <div class="flex justify-start">
-                                <div class="chat-sector-card">
-                                    <div class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                                        Antes de comecar, qual setor da solicitacao?
-                                    </div>
-                                    <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                        <button type="button" class="chat-sector-btn w-full" data-sector="juridico" aria-pressed="false">
-                                            Juridico
-                                        </button>
-                                        <button type="button" class="chat-sector-btn w-full" data-sector="mkt" aria-pressed="false">
-                                            MKT
-                                        </button>
-                                        <button type="button" class="chat-sector-btn w-full" data-sector="rh" aria-pressed="false">
-                                            RH
-                                        </button>
-                                    </div>
-                                    <div id="chat-sector-hint" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                                        Escolha um setor para continuar.
+                            @if ($showSectorPicker)
+                                <div class="flex justify-start">
+                                    <div class="chat-sector-card">
+                                        <div id="chat-sector-title" class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                                            Antes de comecar, qual setor da solicitacao?
+                                        </div>
+                                        <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                            <button type="button" class="chat-sector-btn w-full" data-sector="juridico" aria-pressed="false">
+                                                Juridico
+                                            </button>
+                                            <button type="button" class="chat-sector-btn w-full" data-sector="mkt" aria-pressed="false">
+                                                MKT
+                                            </button>
+                                            <button type="button" class="chat-sector-btn w-full" data-sector="rh" aria-pressed="false">
+                                                RH
+                                            </button>
+                                        </div>
+                                        <div id="chat-sector-hint" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                            Escolha um setor para continuar.
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            @endif
                             <div id="chat-empty" class="flex justify-start">
                                 <div class="chat-bubble chat-bubble-system max-w-lg">
-                                    Seja bem-vindo ao chatbot do GRUPO W3. Me chamo Am?lia e estou disposta a te ajudar com suas demandas.
+                                    Seja bem-vindo ao chatbot do GRUPO W3. Me chamo Amélia e estou disposta a te ajudar com suas demandas.
                                 </div>
                             </div>
                         </div>
@@ -83,17 +87,19 @@
             const attachmentsList = document.getElementById('chat-attachments-list');
             const chatTheme = document.getElementById('chat-theme');
             const sectorHint = document.getElementById('chat-sector-hint');
-            const sectorButtons = document.querySelectorAll('.chat-sector-btn');
+            const sectorTitle = document.getElementById('chat-sector-title');
+            const sectorButtons = document.querySelectorAll('.chat-sector-btn[data-sector]');
             const prefillMessages = @json($prefillMessages);
             const editRequestId = @json($editRequestId);
             const prefillSector = @json($editSector);
+            const requireSector = @json($showSectorPicker);
 
             let selectedSector = '';
             let isPending = false;
             let lockSector = false;
 
             const updateFormState = () => {
-                const canSend = selectedSector !== '' && !isPending;
+                const canSend = (!requireSector || selectedSector !== '') && !isPending;
                 input.disabled = !canSend;
                 send.disabled = !canSend;
                 if (attachBtn) {
@@ -102,7 +108,9 @@
                 if (attachmentsInput) {
                     attachmentsInput.disabled = !canSend;
                 }
-                input.placeholder = selectedSector ? 'Digite sua mensagem' : 'Selecione um setor para continuar';
+                input.placeholder = (requireSector && !selectedSector)
+                    ? 'Selecione um setor para continuar'
+                    : 'Digite sua mensagem';
             };
 
             const updatePanelVisibility = () => {
@@ -119,8 +127,15 @@
                     if (lockSector) {
                         button.disabled = true;
                         button.classList.add('opacity-60', 'cursor-not-allowed');
+                    } else {
+                        button.disabled = false;
+                        button.classList.remove('opacity-60', 'cursor-not-allowed');
                     }
                 });
+
+                if (sectorTitle) {
+                    sectorTitle.textContent = 'Antes de comecar, qual setor da solicitacao?';
+                }
 
                 if (sectorHint) {
                     sectorHint.textContent = selectedSector
@@ -129,8 +144,8 @@
                 }
             };
 
-            const setSector = (sector) => {
-                if (lockSector) {
+            const setSector = (sector, force = false) => {
+                if (lockSector && !force) {
                     return;
                 }
                 selectedSector = sector;
@@ -157,7 +172,7 @@
                 }
             };
 
-            const appendMessage = (role, text, attachments = []) => {
+            const appendMessage = (role, text, attachments = [], meta = null) => {
                 removeEmpty();
                 const wrapper = document.createElement('div');
                 wrapper.className = role === 'user' ? 'flex justify-end' : 'flex justify-start';
@@ -180,6 +195,43 @@
                     });
                     wrapper.appendChild(attachmentWrap);
                 }
+                if (role === 'assistant' && meta && meta.action === 'sector_mismatch') {
+                    const actions = document.createElement('div');
+                    actions.className = 'mt-2 flex flex-wrap gap-2';
+
+                    const recommended = (meta.recommended_sector || '').toUpperCase();
+                    const goButton = document.createElement('button');
+                    goButton.type = 'button';
+                    goButton.className = 'rounded-md btn-accent px-3 py-2 text-xs';
+                    goButton.textContent = recommended ? `Ir para ${recommended}` : 'Ir para setor correto';
+                    goButton.addEventListener('click', () => {
+                        const target = meta.recommended_sector || '';
+                        if (target) {
+                            setSector(target, true);
+                        }
+                        if (meta.original_message) {
+                            input.value = meta.original_message;
+                            input.focus();
+                        }
+                    });
+
+                    const keepButton = document.createElement('button');
+                    keepButton.type = 'button';
+                    keepButton.className = 'rounded-md border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs';
+                    keepButton.textContent = 'Continuar mesmo assim';
+                    keepButton.addEventListener('click', () => {
+                        input.value = 'continuar';
+                        if (form.requestSubmit) {
+                            form.requestSubmit();
+                        } else {
+                            form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                        }
+                    });
+
+                    actions.appendChild(goButton);
+                    actions.appendChild(keepButton);
+                    wrapper.appendChild(actions);
+                }
                 log.appendChild(wrapper);
                 log.scrollTop = log.scrollHeight;
 
@@ -187,6 +239,7 @@
                     lockSector = true;
                     updateSectorUI();
                 }
+
             };
 
             const applyPrefill = () => {
@@ -312,7 +365,7 @@
 
             form.addEventListener('submit', async (event) => {
                 event.preventDefault();
-                if (!selectedSector) {
+                if (requireSector && !selectedSector) {
                     if (sectorHint) {
                         sectorHint.textContent = 'Escolha um setor para continuar.';
                     }
@@ -334,7 +387,9 @@
                         : `msg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
                     const formData = new FormData();
                     formData.append('message', text);
-                    formData.append('sector', selectedSector);
+                    if (selectedSector) {
+                        formData.append('sector', selectedSector);
+                    }
                     formData.append('message_id', messageId);
                     if (editRequestId) {
                         formData.append('request_id', editRequestId);
@@ -346,7 +401,13 @@
                         headers: { 'Content-Type': 'multipart/form-data' },
                     });
                     const reply = response?.data?.text || 'Sem resposta.';
-                    appendMessage('assistant', reply);
+                    const action = response?.data?.action || null;
+                    const meta = action ? {
+                        action,
+                        recommended_sector: response?.data?.recommended_sector || '',
+                        original_message: response?.data?.original_message || '',
+                    } : null;
+                    appendMessage('assistant', reply, [], meta);
                     pendingFiles.splice(0, pendingFiles.length);
                     renderAttachments();
                 } catch (error) {

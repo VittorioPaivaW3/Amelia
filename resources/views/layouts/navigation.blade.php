@@ -41,6 +41,9 @@
                             <x-nav-link :href="route('admin.users.index')" :active="request()->routeIs('admin.users.*')">
                                 Admin
                             </x-nav-link>
+                            <x-nav-link :href="route('admin.policies.index')" :active="request()->routeIs('admin.policies.*')">
+                                Politicas
+                            </x-nav-link>
                         @endif
                         <x-nav-link :href="route('chat')" :active="request()->routeIs('chat')">
                             Chat
@@ -114,6 +117,9 @@
             @if ($role === 'admin')
                 <x-responsive-nav-link :href="route('admin.users.index')" :active="request()->routeIs('admin.users.*')">
                     Admin
+                </x-responsive-nav-link>
+                <x-responsive-nav-link :href="route('admin.policies.index')" :active="request()->routeIs('admin.policies.*')">
+                    Politicas
                 </x-responsive-nav-link>
             @endif
             <x-responsive-nav-link :href="route('chat')" :active="request()->routeIs('chat')">

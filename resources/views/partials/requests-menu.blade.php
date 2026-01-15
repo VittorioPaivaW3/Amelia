@@ -13,7 +13,7 @@
                 Nenhuma solicitacao enviada ainda.
             </div>
         @else
-            <div class="request-grid grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6" x-data="{ openId: null }">
+            <div class="request-grid grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6" x-data="{ openId: null, cancelId: null }">
                 @foreach ($requests as $requestItem)
                     @php
                         $status = $requestItem->status ?? '';
@@ -25,9 +25,12 @@
                             'rh' => ['accent' => '#f59e0b', 'deep' => '#b45309'],
                             'default' => ['accent' => 'var(--accent)', 'deep' => 'var(--accent-hover)'],
                         ];
-                        $isRejected = $status === 'recusado';
+                        $isRejected = in_array($status, ['recusado', 'cancelado'], true);
+                        $isCanceled = $status === 'cancelado';
                         $isAccepted = $status === 'em_andamento';
                         $canEdit = $status === 'novo' || $status === '';
+                        $canCancel = $canEdit && ! $requestItem->accepted_by;
+                        $reasonLabel = $isCanceled ? 'Motivo do cancelamento' : 'Justificativa da recusa';
                         $colors = $palette[$sectorValue] ?? $palette['default'];
                         $cardClass = 'request-card';
                         if ($isRejected) {
@@ -41,6 +44,14 @@
                     @endphp
                     <div class="{{ $cardClass }}" style="{{ $cardStyle }}">
                         <div class="request-card__hero">
+                            @if ($canCancel)
+                                <button type="button"
+                                    class="request-card__reject"
+                                    title="Cancelar"
+                                    @click="cancelId = {{ $requestItem->id }}">
+                                    X
+                                </button>
+                            @endif
                             <div class="request-card__gut">
                                 <span class="request-card__gut-label">GUT</span>
                                 <span class="request-card__gut-score">{{ $requestItem->score }}</span>
@@ -56,7 +67,7 @@
                                         'inline-flex items-center rounded-full border px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide',
                                         'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700' => $status === 'novo' || $status === '',
                                         'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-900' => $status === 'concluido',
-                                        'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-900' => $status === 'recusado',
+                                        'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-900' => in_array($status, ['recusado', 'cancelado'], true),
                                     ])>
                                         {{ $statusLabel }}
                                     </span>
@@ -110,7 +121,7 @@
                                                 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700' => $status === 'novo' || $status === '',
                                                 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-900' => $status === 'em_andamento',
                                                 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-900' => $status === 'concluido',
-                                                'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-900' => $status === 'recusado',
+                                                'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-900' => in_array($status, ['recusado', 'cancelado'], true),
                                             ])>
                                                 {{ $statusLabel }}
                                             </span>
@@ -244,7 +255,7 @@
 
                                     @if (($requestItem->rejection_reason ?? '') !== '')
                                         <div class="request-modal__section">
-                                            <div class="request-modal__label request-modal__label--danger">Justificativa da recusa</div>
+                                            <div class="request-modal__label request-modal__label--danger">{{ $reasonLabel }}</div>
                                             <div class="request-modal__text whitespace-pre-line">
                                                 {{ $requestItem->rejection_reason }}
                                             </div>
@@ -252,6 +263,35 @@
                                     @endif
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <div x-show="cancelId === {{ $requestItem->id }}"
+                         x-cloak
+                         class="fixed inset-0 z-50 flex items-center justify-center">
+                        <div class="absolute inset-0 bg-black/50" @click="cancelId = null"></div>
+                        <div class="relative bg-white dark:bg-gray-900 w-[calc(100%-2rem)] sm:w-full max-w-md rounded-lg shadow-lg p-6">
+                            <div class="flex items-start justify-between gap-4">
+                                <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                                    Cancelar solicitacao #{{ $requestItem->id }}
+                                </h3>
+                                <button type="button" class="text-gray-500 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white" @click="cancelId = null">
+                                    Fechar
+                                </button>
+                            </div>
+                            <p class="mt-3 text-sm text-gray-600 dark:text-gray-300">
+                                Tem certeza que deseja cancelar este pedido?
+                            </p>
+                            <form method="POST" action="{{ route('gut-requests.cancel', $requestItem) }}" class="mt-4 flex justify-end gap-2">
+                                @csrf
+                                @method('PATCH')
+                                <button type="button" class="rounded-md border border-gray-200 dark:border-gray-700 px-4 py-2 text-sm" @click="cancelId = null">
+                                    Voltar
+                                </button>
+                                <button type="submit" class="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
+                                    Cancelar pedido
+                                </button>
+                            </form>
                         </div>
                     </div>
                 @endforeach
@@ -262,7 +302,7 @@
             $sectorOptions = collect(['mkt', 'juridico', 'rh'])->mapWithKeys(function ($sectorItem) {
                 return [$sectorItem => strtoupper($sectorItem)];
             })->all();
-            $statusOptions = collect(['novo', 'em_andamento', 'concluido', 'recusado'])->mapWithKeys(function ($statusItem) {
+            $statusOptions = collect(['novo', 'em_andamento', 'concluido', 'recusado', 'cancelado'])->mapWithKeys(function ($statusItem) {
                 $label = ucwords(str_replace('_', ' ', $statusItem));
                 return [$statusItem => $label];
             })->all();
@@ -291,8 +331,10 @@
                             'rh' => ['accent' => '#f59e0b', 'deep' => '#b45309'],
                             'default' => ['accent' => '#6b7280', 'deep' => '#374151'],
                         ];
-                        $isRejected = $status === 'recusado';
+                        $isRejected = in_array($status, ['recusado', 'cancelado'], true);
+                        $isCanceled = $status === 'cancelado';
                         $isAccepted = $status === 'em_andamento';
+                        $reasonLabel = $isCanceled ? 'Motivo do cancelamento' : 'Justificativa da recusa';
                         $colors = $palette[$sector] ?? $palette['default'];
                         $cardClass = 'request-card';
                         if ($isRejected) {
@@ -329,7 +371,7 @@
                                         'inline-flex items-center rounded-full border px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide',
                                         'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700' => $status === 'novo' || $status === '',
                                         'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-900' => $status === 'concluido',
-                                        'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-900' => $status === 'recusado',
+                                        'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-900' => in_array($status, ['recusado', 'cancelado'], true),
                                     ])>
                                         {{ $statusLabel }}
                                     </span>
@@ -405,7 +447,7 @@
                                                 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700' => $status === 'novo' || $status === '',
                                                 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-900' => $status === 'em_andamento',
                                                 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-900' => $status === 'concluido',
-                                                'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-900' => $status === 'recusado',
+                                                'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-900' => in_array($status, ['recusado', 'cancelado'], true),
                                             ])>
                                                 {{ $statusLabel }}
                                             </span>
@@ -517,7 +559,7 @@
 
                                     @if (($requestItem->rejection_reason ?? '') !== '')
                                         <div class="request-modal__section">
-                                            <div class="request-modal__label request-modal__label--danger">Justificativa da recusa</div>
+                                            <div class="request-modal__label request-modal__label--danger">{{ $reasonLabel }}</div>
                                             <div class="request-modal__text whitespace-pre-line">
                                                 {{ $requestItem->rejection_reason }}
                                             </div>

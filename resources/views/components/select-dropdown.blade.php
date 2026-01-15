@@ -35,6 +35,7 @@
             return this.themeByValue ? `select-theme-${this.value}` : '';
         }
     }"
+    x-modelable="value"
     :class="themeClass">
     <input type="hidden" name="{{ $name }}" x-model="value">
     <button type="button"

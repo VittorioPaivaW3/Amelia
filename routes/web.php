@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\PolicyDocumentController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\GutRequestAttachmentController;
@@ -43,6 +44,9 @@ Route::middleware('auth')->group(function () {
     Route::patch('/gut-requests/{gutRequest}', [GutRequestController::class, 'update'])
         ->middleware('role:admin,mkt,juridico,rh')
         ->name('gut-requests.update');
+    Route::patch('/gut-requests/{gutRequest}/cancel', [GutRequestController::class, 'cancel'])
+        ->middleware('role:user')
+        ->name('gut-requests.cancel');
     Route::middleware('role:admin')
         ->prefix('admin')
         ->name('admin.')
@@ -51,6 +55,10 @@ Route::middleware('auth')->group(function () {
             Route::post('/users', [AdminUserController::class, 'store'])->name('users.store');
             Route::patch('/users/{user}', [AdminUserController::class, 'update'])->name('users.update');
             Route::delete('/users/{user}', [AdminUserController::class, 'destroy'])->name('users.destroy');
+            Route::get('/policies', [PolicyDocumentController::class, 'index'])->name('policies.index');
+            Route::post('/policies', [PolicyDocumentController::class, 'store'])->name('policies.store');
+            Route::get('/policies/{policyDocument}/view', [PolicyDocumentController::class, 'view'])->name('policies.view');
+            Route::get('/policies/{policyDocument}/download', [PolicyDocumentController::class, 'download'])->name('policies.download');
         });
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');

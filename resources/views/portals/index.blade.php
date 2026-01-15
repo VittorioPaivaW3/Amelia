@@ -61,9 +61,11 @@
                                 'rh' => ['accent' => '#f59e0b', 'deep' => '#b45309'],
                                 'default' => ['accent' => '#6b7280', 'deep' => '#374151'],
                             ];
-                            $isRejected = $status === 'recusado';
+                            $isRejected = in_array($status, ['recusado', 'cancelado'], true);
+                            $isCanceled = $status === 'cancelado';
                             $isAccepted = $status === 'em_andamento';
                             $colors = $palette[$sectorValue] ?? $palette['default'];
+                            $reasonLabel = $isCanceled ? 'Motivo do cancelamento' : 'Justificativa da recusa';
                             $cardClass = 'request-card';
                             if ($isRejected) {
                                 $cardClass .= ' request-card--rejected';
@@ -100,7 +102,7 @@
                                             'inline-flex items-center rounded-full border px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide',
                                             'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700' => $status === 'novo' || $status === '',
                                             'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-900' => $status === 'concluido',
-                                            'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-900' => $status === 'recusado',
+                                            'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-900' => in_array($status, ['recusado', 'cancelado'], true),
                                         ])>
                                             {{ $statusLabel }}
                                         </span>
@@ -163,7 +165,7 @@
                                                     'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700' => $status === 'novo' || $status === '',
                                                     'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-900' => $status === 'em_andamento',
                                                     'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-900' => $status === 'concluido',
-                                                    'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-900' => $status === 'recusado',
+                                                    'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-200 dark:border-red-900' => in_array($status, ['recusado', 'cancelado'], true),
                                                 ])>
                                                     {{ $statusLabel }}
                                                 </span>
@@ -300,7 +302,7 @@
 
                                         @if (($requestItem->rejection_reason ?? '') !== '')
                                             <div class="request-modal__section">
-                                                <div class="request-modal__label request-modal__label--danger">Justificativa da recusa</div>
+                                                <div class="request-modal__label request-modal__label--danger">{{ $reasonLabel }}</div>
                                                 <div class="request-modal__text whitespace-pre-line">
                                                     {{ $requestItem->rejection_reason }}
                                                 </div>

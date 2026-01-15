@@ -9,6 +9,8 @@
         $role = $role ?? auth()->user()?->role;
         $isAdmin = $role === 'admin';
         $isStaff = in_array($role, ['mkt', 'juridico', 'rh'], true);
+        $costLabel = $costLabel ?? 'media';
+        $costSuffix = $costLabel !== '' ? ' ('.$costLabel.')' : '';
     @endphp
 
     <div class="py-12">
@@ -209,6 +211,11 @@
                                     <div class="admin-kpi__label">Recusadas</div>
                                     <div class="admin-kpi__meta">{{ $stats['reject_rate'] ?? '0%' }} de recusas</div>
                                 </div>
+                                <div class="admin-kpi">
+                                    <div class="admin-kpi__value">{{ $stats['canceled'] ?? 0 }}</div>
+                                    <div class="admin-kpi__label">Canceladas</div>
+                                    <div class="admin-kpi__meta">{{ $stats['cancel_rate'] ?? '0%' }} de cancelamentos</div>
+                                </div>
                             </div>
                         </div>
 
@@ -243,24 +250,24 @@
                             </div>
 
                             <div class="admin-panel">
-                                <div class="admin-panel__title">Recusas recentes</div>
-                                <div class="admin-list">
-                                    @if (empty($recentRejections))
-                                        <div class="text-sm text-gray-500 dark:text-gray-400">
-                                            Nenhuma recusa no periodo.
-                                        </div>
-                                    @else
-                                        @foreach ($recentRejections as $item)
-                                            <div class="admin-list-item">
-                                                <div>
-                                                    <div class="admin-list-title">{{ $item['title'] }}</div>
-                                                    <div class="admin-list-sub">{{ $item['time'] }}</div>
-                                                </div>
-                                                <span class="admin-list-pill">Recusado</span>
+                            <div class="admin-panel__title">Encerradas recentes</div>
+                            <div class="admin-list">
+                                @if (empty($recentClosures))
+                                    <div class="text-sm text-gray-500 dark:text-gray-400">
+                                        Nenhuma recusa ou cancelamento no periodo.
+                                    </div>
+                                @else
+                                    @foreach ($recentClosures as $item)
+                                        <div class="admin-list-item">
+                                            <div>
+                                                <div class="admin-list-title">{{ $item['title'] }}</div>
+                                                <div class="admin-list-sub">{{ $item['time'] }}</div>
                                             </div>
-                                        @endforeach
-                                    @endif
-                                </div>
+                                            <span class="admin-list-pill">{{ $item['status'] }}</span>
+                                        </div>
+                                    @endforeach
+                                @endif
+                            </div>
                             </div>
                         </div>
 
@@ -280,22 +287,100 @@
                         </div>
 
                         <div class="mt-6">
-                            <div class="admin-panel">
-                                <div class="admin-panel__title">Relatorios</div>
-                                <div class="admin-report-grid">
-                                    @foreach (($reportSummary ?? []) as $item)
-                                        <div class="admin-report-item">
-                                            <div class="admin-report-value">{{ $item['value'] }}</div>
-                                            <div class="admin-report-label">{{ $item['label'] }}</div>
+                            @if ($isAdmin)
+                                <div class="grid gap-6 lg:grid-cols-2">
+                                    <div class="admin-panel">
+                                        <div class="admin-panel__title">Relatorios</div>
+                                        <div class="admin-report-grid">
+                                            @foreach (($reportSummary ?? []) as $item)
+                                                <div class="admin-report-item">
+                                                    <div class="admin-report-value">{{ $item['value'] }}</div>
+                                                    <div class="admin-report-label">{{ $item['label'] }}</div>
+                                                </div>
+                                            @endforeach
                                         </div>
-                                    @endforeach
+                                        <div class="mt-4">
+                                            <a href="{{ route('reports.export', request()->query()) }}" class="admin-report-button">
+                                                Exportar CSV
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class="admin-panel">
+                                        <div class="admin-panel__title">Tokens de IA</div>
+                                        <div class="admin-report-grid">
+                                            <div class="admin-report-item">
+                                                <div class="admin-report-value">{{ $tokenStats['input'] ?? '0' }}</div>
+                                                <div class="admin-report-label">Tokens usuarios</div>
+                                            </div>
+                                            <div class="admin-report-item">
+                                                <div class="admin-report-value">{{ $tokenStats['output'] ?? '0' }}</div>
+                                                <div class="admin-report-label">Tokens chat</div>
+                                            </div>
+                                            <div class="admin-report-item">
+                                                <div class="admin-report-value">{{ $tokenStats['total'] ?? '0' }}</div>
+                                                <div class="admin-report-label">Total tokens</div>
+                                            </div>
+                                            <div class="admin-report-item">
+                                                <div class="admin-report-value">{{ $tokenStats['avg'] ?? '0' }}</div>
+                                                <div class="admin-report-label">Media por conversa</div>
+                                            </div>
+                                            <div class="admin-report-item">
+                                                <div class="admin-report-value">{{ $tokenStats['requests'] ?? '0' }}</div>
+                                                <div class="admin-report-label">Conversas</div>
+                                            </div>
+                                            <div class="admin-report-item">
+                                                <div class="admin-report-value">{{ $tokenStats['cost_input'] ?? '0' }}</div>
+                                                <div class="admin-report-label">Custo usuarios{{ $costSuffix }}</div>
+                                            </div>
+                                            <div class="admin-report-item">
+                                                <div class="admin-report-value">{{ $tokenStats['cost_output'] ?? '0' }}</div>
+                                                <div class="admin-report-label">Custo chat{{ $costSuffix }}</div>
+                                            </div>
+                                            <div class="admin-report-item">
+                                                <div class="admin-report-value">{{ $tokenStats['cost_total'] ?? '0' }}</div>
+                                                <div class="admin-report-label">Custo total{{ $costSuffix }}</div>
+                                            </div>
+                                            <div class="admin-report-item">
+                                                <div class="admin-report-value">{{ $tokenStats['cost_avg'] ?? '0' }}</div>
+                                                <div class="admin-report-label">Custo medio{{ $costSuffix }}</div>
+                                            </div>
+                                        </div>
+                                        @if (! empty($topTokenUsers))
+                                            <div class="mt-4">
+                                                <div class="admin-panel__title">Usuarios com mais tokens</div>
+                                                <div class="admin-list">
+                                                    @foreach ($topTokenUsers as $user)
+                                                        <div class="admin-list-item">
+                                                            <div>
+                                                                <div class="admin-list-title">{{ $user['name'] }}</div>
+                                                                <div class="admin-list-sub">Tokens no periodo</div>
+                                                            </div>
+                                                            <span class="admin-list-pill">{{ $user['tokens'] }}</span>
+                                                        </div>
+                                                    @endforeach
+                                                </div>
+                                            </div>
+                                        @endif
+                                    </div>
                                 </div>
-                                <div class="mt-4">
-                                    <a href="{{ route('reports.export', request()->query()) }}" class="admin-report-button">
-                                        Exportar CSV
-                                    </a>
+                            @else
+                                <div class="admin-panel">
+                                    <div class="admin-panel__title">Relatorios</div>
+                                    <div class="admin-report-grid">
+                                        @foreach (($reportSummary ?? []) as $item)
+                                            <div class="admin-report-item">
+                                                <div class="admin-report-value">{{ $item['value'] }}</div>
+                                                <div class="admin-report-label">{{ $item['label'] }}</div>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                    <div class="mt-4">
+                                        <a href="{{ route('reports.export', request()->query()) }}" class="admin-report-button">
+                                            Exportar CSV
+                                        </a>
+                                    </div>
                                 </div>
-                            </div>
+                            @endif
                         </div>
                     </div>
                 </div>

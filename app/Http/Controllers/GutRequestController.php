@@ -2,18 +2,20 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ChatTokenUsage;
 use App\Models\GutRequest;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class GutRequestController extends Controller
 {
     private const SECTORS = ['mkt', 'juridico', 'rh'];
-    private const STATUSES = ['novo', 'em_andamento', 'concluido', 'recusado'];
+    private const STATUSES = ['novo', 'em_andamento', 'concluido', 'recusado', 'cancelado'];
 
     public function dashboard(Request $request): View
     {
@@ -65,6 +67,9 @@ class GutRequestController extends Controller
         $rejected = (clone $filteredQuery)
             ->where('status', 'recusado')
             ->count();
+        $canceled = (clone $filteredQuery)
+            ->where('status', 'cancelado')
+            ->count();
         $accepted = (clone $filteredQuery)
             ->whereIn('status', ['em_andamento', 'concluido'])
             ->count();
@@ -73,6 +78,7 @@ class GutRequestController extends Controller
         $avgAccept = $this->formatMinutes($avgAcceptMinutes);
         $acceptRate = $total > 0 ? (int) round(($accepted / $total) * 100) : 0;
         $rejectRate = $total > 0 ? (int) round(($rejected / $total) * 100) : 0;
+        $cancelRate = $total > 0 ? (int) round(($canceled / $total) * 100) : 0;
         $ringValue = $avgAcceptMinutes ? min(100, (int) round(($avgAcceptMinutes / 180) * 100)) : 0;
 
         $previousTo = (clone $from)->subDay()->endOfDay();
@@ -85,13 +91,18 @@ class GutRequestController extends Controller
         $previousRejected = (clone $previousQuery)
             ->where('status', 'recusado')
             ->count();
+        $previousCanceled = (clone $previousQuery)
+            ->where('status', 'cancelado')
+            ->count();
         $previousAvgAcceptMinutes = $this->averageAcceptMinutes(clone $previousQuery);
 
         $stats = [
             'total' => $total,
             'pending' => $pending,
             'rejected' => $rejected,
+            'canceled' => $canceled,
             'reject_rate' => $rejectRate.'%',
+            'cancel_rate' => $cancelRate.'%',
             'accept_rate' => $acceptRate.'%',
             'avg_accept' => $avgAccept,
             'growth' => $this->formatTrend($total, $previousTotal),
@@ -132,16 +143,18 @@ class GutRequestController extends Controller
             ];
         }
 
-        $recentRejections = (clone $filteredQuery)
-            ->where('status', 'recusado')
-            ->latest()
+        $recentClosures = $this->applyDateRange(clone $baseQuery, $from, $to, 'updated_at')
+            ->whereIn('status', ['recusado', 'cancelado'])
+            ->orderByDesc('updated_at')
             ->take(3)
             ->get()
             ->map(function (GutRequest $item) use ($sectorPalette) {
                 $sectorLabel = $sectorPalette[$item->sector]['label'] ?? strtoupper((string) $item->sector);
+                $statusLabel = $item->status === 'cancelado' ? 'Cancelado' : 'Recusado';
                 return [
                     'title' => '#'.$item->id.' | '.$sectorLabel,
                     'time' => $item->updated_at?->format('d/m H:i'),
+                    'status' => $statusLabel,
                 ];
             })
             ->all();
@@ -163,6 +176,11 @@ class GutRequestController extends Controller
                 'trend' => $this->formatTrend($rejected, $previousRejected),
             ],
             [
+                'label' => 'Canceladas',
+                'value' => $canceled,
+                'trend' => $this->formatTrend($canceled, $previousCanceled),
+            ],
+            [
                 'label' => 'Tempo medio',
                 'value' => $avgAccept,
                 'trend' => $this->formatTrend($avgAcceptMinutes, $previousAvgAcceptMinutes),
@@ -173,8 +191,76 @@ class GutRequestController extends Controller
             ['label' => 'Total', 'value' => $total],
             ['label' => 'Aceitas', 'value' => $accepted],
             ['label' => 'Recusadas', 'value' => $rejected],
+            ['label' => 'Canceladas', 'value' => $canceled],
             ['label' => 'Pendentes', 'value' => $pending],
         ];
+
+        $costLabel = (string) config('services.openai.cost_label', 'media');
+        $tokenStats = [
+            'input' => '0',
+            'output' => '0',
+            'total' => '0',
+            'avg' => '0',
+            'requests' => '0',
+            'cost_input' => '0',
+            'cost_output' => '0',
+            'cost_total' => '0',
+            'cost_avg' => '0',
+        ];
+        $topTokenUsers = [];
+        if ($isAdmin && Schema::hasTable('chat_token_usages')) {
+            $currency = (string) config('services.openai.cost_currency', 'USD');
+            $tokenQuery = ChatTokenUsage::query();
+            if ($sectorFilter) {
+                $tokenQuery->where('sector', $sectorFilter);
+            }
+            $tokenQuery = $this->applyDateRange($tokenQuery, $from, $to, 'chat_token_usages.created_at');
+
+            $tokenTotals = (clone $tokenQuery)
+                ->selectRaw('COALESCE(SUM(input_tokens), 0) as input_tokens')
+                ->selectRaw('COALESCE(SUM(output_tokens), 0) as output_tokens')
+                ->selectRaw('COALESCE(SUM(total_tokens), 0) as total_tokens')
+                ->selectRaw('COALESCE(SUM(input_cost), 0) as input_cost')
+                ->selectRaw('COALESCE(SUM(output_cost), 0) as output_cost')
+                ->selectRaw('COALESCE(SUM(total_cost), 0) as total_cost')
+                ->selectRaw('COUNT(*) as total_rows')
+                ->first();
+
+            $tokenInput = (int) ($tokenTotals->input_tokens ?? 0);
+            $tokenOutput = (int) ($tokenTotals->output_tokens ?? 0);
+            $tokenTotal = (int) ($tokenTotals->total_tokens ?? 0);
+            $tokenRows = (int) ($tokenTotals->total_rows ?? 0);
+            $tokenInputCost = (float) ($tokenTotals->input_cost ?? 0);
+            $tokenOutputCost = (float) ($tokenTotals->output_cost ?? 0);
+            $tokenTotalCost = (float) ($tokenTotals->total_cost ?? 0);
+
+            $tokenStats = [
+                'input' => $this->formatNumber($tokenInput),
+                'output' => $this->formatNumber($tokenOutput),
+                'total' => $this->formatNumber($tokenTotal),
+                'avg' => $this->formatNumber($tokenRows > 0 ? (int) round($tokenTotal / $tokenRows) : 0),
+                'requests' => $this->formatNumber($tokenRows),
+                'cost_input' => $this->formatCurrency($tokenInputCost, $currency),
+                'cost_output' => $this->formatCurrency($tokenOutputCost, $currency),
+                'cost_total' => $this->formatCurrency($tokenTotalCost, $currency),
+                'cost_avg' => $this->formatCurrency($tokenRows > 0 ? $tokenTotalCost / $tokenRows : 0, $currency),
+            ];
+
+            $topTokenUsers = (clone $tokenQuery)
+                ->leftJoin('users', 'chat_token_usages.user_id', '=', 'users.id')
+                ->select('users.name', DB::raw('SUM(chat_token_usages.total_tokens) as total_tokens'))
+                ->groupBy('users.id', 'users.name')
+                ->orderByDesc('total_tokens')
+                ->limit(5)
+                ->get()
+                ->map(function ($row) {
+                    return [
+                        'name' => $row->name ?: 'Usuario removido',
+                        'tokens' => $this->formatNumber((int) $row->total_tokens),
+                    ];
+                })
+                ->all();
+        }
 
         $heroTitle = $isAdmin ? 'Bem-vindo, '.$user->name : 'Painel do setor '.$sectorInfo['name'];
         $heroSub = $isAdmin
@@ -188,9 +274,12 @@ class GutRequestController extends Controller
             'role' => $role,
             'stats' => $stats,
             'sectorCounts' => $sectorCounts,
-            'recentRejections' => $recentRejections,
+            'recentClosures' => $recentClosures,
             'summaryCards' => $summaryCards,
             'reportSummary' => $reportSummary,
+            'tokenStats' => $tokenStats,
+            'topTokenUsers' => $topTokenUsers,
+            'costLabel' => $costLabel,
             'summaryTitle' => $summaryTitle,
             'summaryFooterTitle' => $summaryFooterTitle,
             'heroTitle' => $heroTitle,
@@ -376,6 +465,13 @@ class GutRequestController extends Controller
             $data['accepted_by'] = null;
             $data['accepted_at'] = null;
             $data['rejection_reason'] = trim((string) ($data['rejection_reason'] ?? ''));
+        } elseif (($data['status'] ?? '') === 'cancelado') {
+            $data['accepted_by'] = null;
+            $data['accepted_at'] = null;
+            $data['rejection_reason'] = trim((string) ($data['rejection_reason'] ?? ''));
+            if ($data['rejection_reason'] === '') {
+                $data['rejection_reason'] = null;
+            }
         } elseif (($data['status'] ?? '') === 'novo') {
             $data['accepted_by'] = null;
             $data['accepted_at'] = null;
@@ -389,6 +485,32 @@ class GutRequestController extends Controller
         $gutRequest->update($data);
 
         return back()->with('status', 'Solicitacao atualizada.');
+    }
+
+    public function cancel(Request $request, GutRequest $gutRequest): RedirectResponse
+    {
+        $user = $request->user();
+        if (! $user) {
+            abort(403);
+        }
+
+        if ($gutRequest->user_id !== $user->id) {
+            abort(403);
+        }
+
+        $status = $gutRequest->status ?? '';
+        if (! in_array($status, ['novo', ''], true) || $gutRequest->accepted_by || $gutRequest->accepted_at) {
+            return back()->with('status', 'Solicitacao nao pode ser cancelada.');
+        }
+
+        $gutRequest->update([
+            'status' => 'cancelado',
+            'rejection_reason' => 'Cancelado pelo solicitante.',
+            'accepted_by' => null,
+            'accepted_at' => null,
+        ]);
+
+        return back()->with('status', 'Solicitacao cancelada.');
     }
 
     public function export(Request $request): StreamedResponse
@@ -483,9 +605,9 @@ class GutRequestController extends Controller
         return [$from, $to, $rangeDays];
     }
 
-    private function applyDateRange($query, Carbon $from, Carbon $to)
+    private function applyDateRange($query, Carbon $from, Carbon $to, string $column = 'created_at')
     {
-        return $query->whereBetween('created_at', [$from, $to]);
+        return $query->whereBetween($column, [$from, $to]);
     }
 
     private function averageAcceptMinutes($query): ?float
@@ -527,5 +649,23 @@ class GutRequestController extends Controller
         $sign = $change >= 0 ? '+' : '';
 
         return $sign.(string) round($change).'%';
+    }
+
+    private function formatNumber(int|float $value): string
+    {
+        return number_format((float) $value, 0, ',', '.');
+    }
+
+    private function formatCurrency(float $value, string $currency = 'USD'): string
+    {
+        $currency = strtoupper(trim($currency));
+        $symbol = match ($currency) {
+            'BRL' => 'R$',
+            'USD' => 'US$',
+            'EUR' => 'EUR',
+            default => $currency !== '' ? $currency : 'USD',
+        };
+
+        return $symbol.' '.number_format($value, 4, ',', '.');
     }
 }

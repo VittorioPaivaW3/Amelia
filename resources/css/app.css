@@ -108,6 +108,38 @@
     background-color: var(--accent-hover);
   }
 
+  .policy-file-input::file-selector-button {
+    margin-right: 1rem;
+    border: 0;
+    border-radius: 9999px;
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background-color: var(--accent);
+    color: var(--accent-contrast);
+    cursor: pointer;
+  }
+
+  .policy-file-input::file-selector-button:hover {
+    background-color: var(--accent-hover);
+  }
+
+  .policy-file-input::-webkit-file-upload-button {
+    margin-right: 1rem;
+    border: 0;
+    border-radius: 9999px;
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background-color: var(--accent);
+    color: var(--accent-contrast);
+    cursor: pointer;
+  }
+
+  .policy-file-input::-webkit-file-upload-button:hover {
+    background-color: var(--accent-hover);
+  }
+
   .nav-link {
     @apply inline-flex items-center px-3 py-2 rounded-full text-sm font-medium leading-5 transition duration-150 ease-in-out;
     color: var(--nav-text);
@@ -359,6 +391,7 @@
     box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
   }
 
+
   .chat-input:focus {
     border-color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent);
@@ -513,6 +546,7 @@
     --btn-hover: #D97706;
     --btn-soft: rgba(251, 191, 36, 0.18);
   }
+
 
   .request-card {
     border-radius: 1.25rem;
